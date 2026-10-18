@@ -1,7 +1,9 @@
 package morskicorvidae.hemovaleserver;
 
+import morskicorvidae.hemovaleserver.utils.EmbedManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
@@ -38,7 +40,7 @@ public class Main extends ListenerAdapter {
         roleAddCommand.addOption(OptionType.INTEGER, "level", "The level at which the user gains the role.", true);
 
         SlashCommandData joinroleCommand = Commands.slash("joinrole", "Pick a role which all members get when joining.");
-        joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.");
+        joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.", true);
 
         event.getJDA().updateCommands().addCommands(
                 roleCommand.addSubcommands(roleAddCommand),
@@ -54,10 +56,14 @@ public class Main extends ListenerAdapter {
                 break;
             case "joinrole":
                 Role joinRole = event.getInteraction().getOption("role").getAsRole();
+                MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
+                event.replyEmbeds(reply).queue();
                 break;
         }
     }
 
     private void handleRoleCommand(SlashCommandInteractionEvent event) {
+        MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
+        event.replyEmbeds(reply).queue();
     }
 }

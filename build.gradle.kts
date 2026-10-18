@@ -14,6 +14,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     implementation("net.dv8tion:JDA:5.4.0")
     implementation("ch.qos.logback:logback-classic:1.5.6")
+    implementation("org.xerial:sqlite-jdbc:3.45.3.0")
 }
 
 tasks.test {
