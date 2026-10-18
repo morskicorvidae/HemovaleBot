@@ -59,7 +59,9 @@ public class Main extends ListenerAdapter {
         SubcommandData roleUseColorCommand = new SubcommandData("usecolor", "Allows you to use the color of a role you have unlocked. | /role usecolor [role]");
         roleUseColorCommand.addOption(OptionType.ROLE, "role", "The unlocked role you wish to use the color of.", true);
 
-        roleCommand.addSubcommands(roleAddCommand, roleUpdateCommand, roleUseColorCommand);
+        SubcommandData roleListCommand = new SubcommandData("list", "Lists the roles currently added to the roles system. | /role list");
+
+        roleCommand.addSubcommands(roleAddCommand, roleUpdateCommand, roleUseColorCommand, roleListCommand);
 
         SlashCommandData joinroleCommand = Commands.slash("joinrole", "Pick a role which all members get when joining. | /joinrole [role]");
         joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.", true);
@@ -88,9 +90,21 @@ public class Main extends ListenerAdapter {
     }
 
     private void handleRoleCommand(SlashCommandInteractionEvent event) {
-        if(Objects.equals(event.getSubcommandName(), "add")) {
-            handleRoleAddCommand(event);
+        switch (event.getSubcommandName()) {
+            case "add" -> handleRoleAddCommand(event);
+            case "usecolor" -> handleRoleUseColorCommand(event);
+            case "list" -> handleRoleListCommand(event);
+            case "update" -> handleRoleUpdateCommand(event);
         }
+    }
+
+    private void handleRoleUpdateCommand(SlashCommandInteractionEvent event) {
+    }
+
+    private void handleRoleListCommand(SlashCommandInteractionEvent event) {
+    }
+
+    private void handleRoleUseColorCommand(SlashCommandInteractionEvent event) {
     }
 
     private void handleRoleAddCommand(SlashCommandInteractionEvent event) {
