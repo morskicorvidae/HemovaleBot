@@ -2,6 +2,8 @@ package morskicorvidae.hemovaleserver;
 
 import morskicorvidae.hemovaleserver.database.Database;
 import morskicorvidae.hemovaleserver.database.DatabaseRepo;
+import morskicorvidae.hemovaleserver.userprofile.LevelCalculations;
+import morskicorvidae.hemovaleserver.userprofile.ProfileImageGenerator;
 import morskicorvidae.hemovaleserver.utils.EmbedManager;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
@@ -10,6 +12,7 @@ import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
@@ -68,8 +71,69 @@ public class Main extends ListenerAdapter {
         SlashCommandData joinroleCommand = Commands.slash("joinrole", "Pick a role which all members get when joining. | /joinrole [role]");
         joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.", true);
 
+        SlashCommandData profileCommand = Commands.slash("profile", "View your profile card.");
+
         for(Guild guild : event.getJDA().getGuilds()) {
-            guild.updateCommands().addCommands(roleCommand, joinroleCommand).queue();
+            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand).queue();
+        }
+    }
+
+    @Override
+    public void onMessageReceived(MessageReceivedEvent event) {
+        Guild guild = event.getGuild();
+
+        if(event.getAuthor().isBot()) return;
+
+        User user = event.getAuthor();
+        String userId = user.getId();
+
+        int xpToGive = LevelCalculations.getExpFromMessage(event.getMessage().getContentRaw());
+
+        DatabaseRepo.UserLevelHolder holder = dbRepo.getUserLevel(guild.getId(), userId);
+        int totalXp = holder.xp() + xpToGive;
+        int nextLevelXp = LevelCalculations.getXPRequiredForLevel(holder.level() + 1);
+
+        int level = holder.level();
+
+        System.out.println("User (Level " + level + ") has " + totalXp + " XP; next level XP is " + nextLevelXp + "!");
+
+        if(totalXp >= nextLevelXp) {
+            int remainder = totalXp - nextLevelXp;
+            level += 1;
+            totalXp = remainder;
+
+            System.out.println("Calculated " + level + " with " + totalXp + " xp!");
+
+            handleLevelUp(event, guild, event.getMember(), level, totalXp);
+
+            System.out.println("handleLevelUp should've been run");
+        }
+
+        dbRepo.updateUserLevel(guild.getId(), userId, totalXp, level);
+
+        System.out.println("Updated user level in database.");
+    }
+
+    public void handleLevelUp(MessageReceivedEvent event, Guild guild, Member member, int newLevel, int newXp) {
+        System.out.println("handle level up IS being run actually");
+        event.getMessage().reply(member.getAsMention() + " has ascended to **Level " + newLevel + "**!").queue();
+
+        // 2. FIND NEW ROLES
+        List<DatabaseRepo.LevelRoleHolder> allRoles = dbRepo.getAllLevelRoles(guild.getId());
+
+        Role roleToGive = null;
+        for (DatabaseRepo.LevelRoleHolder holder : allRoles) {
+            if (newLevel >= holder.levelRequirement()) {
+                Role role = guild.getRoleById(holder.roleId());
+
+                if (role != null && !member.getRoles().contains(role)) {
+                    roleToGive = role;
+                }
+            }
+        }
+
+        if (roleToGive != null) {
+            guild.addRoleToMember(member, roleToGive).queue();
         }
     }
 
@@ -83,16 +147,62 @@ public class Main extends ListenerAdapter {
                 Guild guild = event.getGuild();
                 Role joinRole = event.getInteraction().getOption("role").getAsRole();
 
+                if (!event.getMember().hasPermission(Permission.MANAGE_ROLES)) {
+                    event.replyEmbeds(EmbedManager.error("You lack permissions!", "Required permission: MANAGE_ROLES")).queue();
+                    return;
+                }
+
                 dbRepo.updateJoinRole(guild.getId(), joinRole.getId());
 
                 MessageEmbed reply = EmbedManager.success("Set Join Role Successfully", "Users will now receive " + joinRole.getAsMention() + " upon joining the server!");
                 event.replyEmbeds(reply).queue();
                 break;
             }
+            case "profile": {
+                handleProfileCommand(event);
+            }
             default: // Shouldn't happen!
                 MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
                 event.replyEmbeds(reply).queue();
         }
+    }
+
+    private void handleProfileCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member member = Objects.requireNonNull(event.getMember());
+
+        // 1. GET INFORMATION ABOUT THE USER
+        DatabaseRepo.UserLevelHolder userData = dbRepo.getUserLevel(guild.getId(), member.getId());
+        int level = userData.level();
+        int xp = userData.xp();
+
+        // 2. GET XP NEEDED FOR NEXT LEVEL
+        int needed = LevelCalculations.getXPRequiredForLevel(level + 1);
+
+        event.deferReply().queue();
+
+        // 3. CREATE THREAD SO THAT BOT DOES NOT FREEZE CREATING IMAGE
+
+        new Thread(() -> {
+            try {
+                byte[] imageBytes = ProfileImageGenerator.generateProfileCard(
+                        member.getEffectiveName(),
+                        member.getEffectiveAvatarUrl(),
+                        level,
+                        xp,
+                        needed
+                );
+
+                // 4. SEND THE ACTUAL IMAGE
+                event.getHook().sendFiles(
+                        net.dv8tion.jda.api.utils.FileUpload.fromData(imageBytes, "profile.png")
+                ).queue();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                event.getHook().sendMessageEmbeds(EmbedManager.error("Error", "Failed to generate profile card.")).queue();
+            }
+        }).start();
     }
 
     private void handleRoleCommand(SlashCommandInteractionEvent event) {
