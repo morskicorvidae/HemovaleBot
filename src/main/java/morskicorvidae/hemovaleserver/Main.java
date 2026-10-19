@@ -255,21 +255,26 @@ public class Main extends ListenerAdapter {
         DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
         String roleName = guild.getRoleById(roleHolder.roleId()).getName();
 
-        String lineage = currentMember.getAsMention() + " is a " + roleName + " of ";
+        StringBuilder lineage = new StringBuilder(currentMember.getAsMention() + " is a " + roleName + " of ");
 
         while(dbRepo.getUserSireId(guild.getId(), currentMember.getId()) != null) {
             String id = dbRepo.getUserSireId(guild.getId(), currentMember.getId());
             currentMember = guild.getMemberById(id);
             level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
             roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
-            roleName = guild.getRoleById(roleHolder.roleId()).getName();
 
-            lineage += currentMember.getAsMention() + ", who is a " + roleName + " of ";
+            if(roleHolder != null) {
+                roleName = guild.getRoleById(roleHolder.roleId()).getName();
+                lineage.append(currentMember.getAsMention()).append(", who is a ").append(roleName).append(" of ");
+            } else {
+                lineage.append(currentMember.getAsMention()).append(", who is sired to ");
+            }
+
         }
 
-        lineage += "nobody.";
+        lineage.append("nobody.");
 
-        event.replyEmbeds(EmbedManager.success("Your Lineage", lineage)).queue();
+        event.replyEmbeds(EmbedManager.success("Your Lineage", lineage.toString())).queue();
     }
 
     private void handleRoleUpdateCommand(SlashCommandInteractionEvent event) {
