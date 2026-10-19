@@ -319,7 +319,7 @@ public class Main extends ListenerAdapter {
                     }
             );
         }, error -> {
-            event.getHook().editOriginalEmbeds(EmbedManager.error("Message Not Found", "The message was not found in the currrent channel. Please run the command in the same channel the reaction role message is located in."));
+            event.getHook().editOriginalEmbeds(EmbedManager.error("Message Not Found", "The message was not found in the currrent channel. Please run the command in the same channel the reaction role message is located in.")).queue();
         });
 
     }
