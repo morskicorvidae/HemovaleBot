@@ -175,6 +175,7 @@ public class Main extends ListenerAdapter {
         }
     }
 
+
     @Override
     public void onGuildMemberRemove(GuildMemberRemoveEvent event) {
         dbRepo.clearChildrenOfSire(event.getGuild().getId(), event.getMember().getUser().getId());
