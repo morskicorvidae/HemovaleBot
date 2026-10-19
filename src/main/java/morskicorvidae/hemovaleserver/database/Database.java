@@ -73,7 +73,7 @@ public class Database {
         """);
 
         // 5. Vampire Family Table
-        // Stores who is someone is sired to (a sire gains 5% of the fledgling's xp, passively)
+        // Stores who is someone is sired to (a sire gains xp when the sired levels up, passively)
         statement.execute("""
             CREATE TABLE IF NOT EXISTS vampire_family (
                 guild_id TEXT,

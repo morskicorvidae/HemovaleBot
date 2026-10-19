@@ -263,4 +263,21 @@ public class DatabaseRepo {
         }
     }
 
+    // Removes the leaving user as a sire from all their children
+    public void clearChildrenOfSire(String guildId, String sireId) {
+        String sql = "UPDATE vampire_family SET sire_id = NULL WHERE guild_id = ? AND sire_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, sireId);
+
+            int rowsUpdated = statement.executeUpdate();
+
+            if (rowsUpdated > 0) {
+                System.out.println("Cleared " + rowsUpdated + " members from sire " + sireId);
+            }
+        } catch (SQLException e) {
+            System.err.println("Clearing children of sire FAILURE " + e.getMessage());
+        }
+    }
+
 }

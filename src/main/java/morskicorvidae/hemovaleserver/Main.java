@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
+import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
@@ -145,6 +146,33 @@ public class Main extends ListenerAdapter {
         if (roleToGive != null) {
             guild.addRoleToMember(member, roleToGive).queue();
         }
+
+        String sireId = dbRepo.getUserSireId(guild.getId(), member.getId());
+
+        if(sireId != null) {
+            int xpToGive = newLevel * 15;
+
+            DatabaseRepo.UserLevelHolder holder = dbRepo.getUserLevel(guild.getId(), sireId);
+            int totalXp = holder.xp() + xpToGive;
+            int nextLevelXp = LevelCalculations.getXPRequiredForLevel(holder.level() + 1);
+
+            int level = holder.level();
+
+            if(totalXp >= nextLevelXp) {
+                int remainder = totalXp - nextLevelXp;
+                level += 1;
+                totalXp = remainder;
+
+                handleLevelUp(event, guild, guild.getMemberById(sireId), level, totalXp);
+            }
+
+            dbRepo.updateUserLevel(guild.getId(), sireId, totalXp, level);
+        }
+    }
+
+    @Override
+    public void onGuildMemberRemove(GuildMemberRemoveEvent event) {
+        dbRepo.clearChildrenOfSire(event.getGuild().getId(), event.getMember().getUser().getId());
     }
 
     @Override
