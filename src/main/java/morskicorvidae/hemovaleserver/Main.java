@@ -376,6 +376,7 @@ public class Main extends ListenerAdapter {
 
         Role colorRole = Objects.requireNonNull(guild.getRoleById(roleHolder.colorRoleId()));
         guild.addRoleToMember(member, colorRole).queue();
+        dbRepo.setUserPreference(guild.getId(), user.getId(), roleHolder.roleId());
 
         event.replyEmbeds(EmbedManager.success("Assigned Color", "You have been assigned the cosmetic color role " + colorRole.getAsMention())).queue();
     }
