@@ -281,9 +281,16 @@ public class Main extends ListenerAdapter {
         Member currentMember = event.getMember();
         DatabaseRepo.UserLevelHolder level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
         DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
-        String roleName = guild.getRoleById(roleHolder.roleId()).getName();
 
-        StringBuilder lineage = new StringBuilder(currentMember.getAsMention() + " is a " + roleName + " of ");
+        String roleName;
+        StringBuilder lineage;
+
+        if(roleHolder == null) {
+            lineage = new StringBuilder(currentMember.getAsMention() + " is sired to ");
+        } else {
+            roleName = guild.getRoleById(roleHolder.roleId()).getName();
+            lineage = new StringBuilder(currentMember.getAsMention() + " is a " + roleName + " of ");
+        }
 
         while(dbRepo.getUserSireId(guild.getId(), currentMember.getId()) != null) {
             String id = dbRepo.getUserSireId(guild.getId(), currentMember.getId());
