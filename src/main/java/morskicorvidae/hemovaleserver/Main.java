@@ -18,6 +18,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
+import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -132,6 +133,33 @@ public class Main extends ListenerAdapter {
         if(role == null) return;
 
         guild.addRoleToMember(member, role).queue();
+    }
+
+    @Override
+    public void onMessageReactionRemove(MessageReactionRemoveEvent event) {
+        if (event.getUser().isBot() || !event.isFromGuild()) return;
+
+        Guild guild = event.getGuild();
+        String guildId = guild.getId();
+        String messageId = event.getMessageId();
+
+        Emoji emoji = event.getEmoji();
+
+        String emojiString = emoji.getFormatted();
+
+        String roleId = dbRepo.getReactionRole(guildId, messageId, emojiString);
+
+        if(roleId == null) return;
+
+        Member member = event.getMember();
+        Role role = guild.getRoleById(roleId);
+
+        if(member == null) return;
+        if(role == null) return;
+
+        if(member.getRoles().contains(role)) {
+            guild.removeRoleFromMember(member, role).queue();
+        }
     }
 
     @Override
@@ -304,6 +332,8 @@ public class Main extends ListenerAdapter {
             event.replyEmbeds(EmbedManager.error("Emoji Error", "The emoji given `" + emojiString + "` seems to be invalid. Please try a different emoji.")).setEphemeral(true).queue();
             return;
         }
+
+        event.deferReply(true).queue();
 
         event.getChannel().retrieveMessageById(messageId).queue(message -> {
             // 5. SAVE REACTION ROLE TO THE DATABASE
