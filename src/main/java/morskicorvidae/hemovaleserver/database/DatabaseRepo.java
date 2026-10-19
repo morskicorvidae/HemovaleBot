@@ -263,6 +263,23 @@ public class DatabaseRepo {
         }
     }
 
+    public List<String> getSiredUsers(String guildId, String sireId) {
+        List<String> siredUsers = new ArrayList<>();
+        String sql = "SELECT user_id FROM vampire_family WHERE guild_id = ? AND sire_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, sireId);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    siredUsers.add(rs.getString("user_id"));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting sired users FAILURE " + e.getMessage());
+        }
+        return siredUsers;
+    }
+
     // Removes the leaving user as a sire from all their children
     public void clearChildrenOfSire(String guildId, String sireId) {
         String sql = "UPDATE vampire_family SET sire_id = NULL WHERE guild_id = ? AND sire_id = ?";
