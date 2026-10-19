@@ -80,6 +80,32 @@ public class DatabaseRepo {
         }
     }
 
+    public LevelRoleHolder getHighestRoleForLevel(String guildId, int level) {
+        String sql = """
+        SELECT role_id, color_role_id, level_required
+        FROM level_roles
+        WHERE guild_id = ? AND level_required <= ?
+        ORDER BY level_required DESC
+        LIMIT 1
+    """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setInt(2, level);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return new LevelRoleHolder(
+                            rs.getString("role_id"),
+                            rs.getString("color_role_id"),
+                            rs.getInt("level_required")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting highest role for level FAILURE " + e.getMessage());
+        }
+        return null;
+    }
+
     public void updateColorRoleId(String guildId, String roleId, String newColorRoleId) {
         String sql = "UPDATE level_roles SET color_role_id = ? WHERE guild_id = ? AND role_id = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {

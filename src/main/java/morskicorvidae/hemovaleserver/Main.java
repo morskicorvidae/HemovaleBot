@@ -170,9 +170,11 @@ public class Main extends ListenerAdapter {
             }
             case "vampire": {
                 handleVampireCommand(event);
+                break;
             }
             case "profile": {
                 handleProfileCommand(event);
+                break;
             }
             default: // Shouldn't happen!
                 MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
@@ -247,7 +249,27 @@ public class Main extends ListenerAdapter {
     }
 
     private void handleVampireLineageCommand(SlashCommandInteractionEvent event) {
+        Guild guild = event.getGuild();
+        Member currentMember = event.getMember();
+        DatabaseRepo.UserLevelHolder level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
+        DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
+        String roleName = guild.getRoleById(roleHolder.roleId()).getName();
 
+        String lineage = currentMember.getAsMention() + " is a " + roleName + " of ";
+
+        while(dbRepo.getUserSireId(guild.getId(), currentMember.getId()) != null) {
+            String id = dbRepo.getUserSireId(guild.getId(), currentMember.getId());
+            currentMember = guild.getMemberById(id);
+            level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
+            roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
+            roleName = guild.getRoleById(roleHolder.roleId()).getName();
+
+            lineage += currentMember.getAsMention() + ", who is a " + roleName + " of ";
+        }
+
+        lineage += "nobody.";
+
+        event.replyEmbeds(EmbedManager.success("Your Lineage", lineage)).queue();
     }
 
     private void handleRoleUpdateCommand(SlashCommandInteractionEvent event) {
