@@ -11,11 +11,13 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -95,11 +97,41 @@ public class Main extends ListenerAdapter {
         SubcommandData nukeCommand = new SubcommandData("nuke", "Bulk delete at most 100 messages within this channel. | /admin nuke [amount]");
         nukeCommand.addOption(OptionType.INTEGER, "amount", "Number of messages to delete (1-100).", true);
 
-        adminCommand.addSubcommands(nukeCommand);
+        SubcommandData reactroleCommand = new SubcommandData("reactrole", "Create a reaction role. | /admin reactrole [message id] [emoji] [role]");
+        reactroleCommand.addOption(OptionType.STRING, "messageid", "The id of the message.", true);
+        reactroleCommand.addOption(OptionType.STRING, "emoji", "The emoji the role will be given from.", true);
+        reactroleCommand.addOption(OptionType.ROLE, "role", "The role to be given.", true);
+
+        adminCommand.addSubcommands(nukeCommand, reactroleCommand);
 
         for(Guild guild : event.getJDA().getGuilds()) {
             guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand).queue();
         }
+    }
+
+    @Override
+    public void onMessageReactionAdd(MessageReactionAddEvent event) {
+        if (event.getUser().isBot() || !event.isFromGuild()) return;
+
+        Guild guild = event.getGuild();
+        String guildId = guild.getId();
+        String messageId = event.getMessageId();
+
+        Emoji emoji = event.getEmoji();
+
+        String emojiString = emoji.getFormatted();
+
+        String roleId = dbRepo.getReactionRole(guildId, messageId, emojiString);
+
+        if(roleId == null) return;
+
+        Member member = event.getMember();
+        Role role = guild.getRoleById(roleId);
+
+        if(member == null) return;
+        if(role == null) return;
+
+        guild.addRoleToMember(member, role).queue();
     }
 
     @Override
@@ -229,7 +261,67 @@ public class Main extends ListenerAdapter {
     private void handleAdminCommand(SlashCommandInteractionEvent event) {
         switch(event.getSubcommandName()) {
             case "nuke" -> handleAdminNukeCommand(event);
+            case "reactrole" -> handleAdminReactroleCommand(event);
         }
+    }
+
+    private void handleAdminReactroleCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member member = Objects.requireNonNull(event.getMember());
+
+        // 1. ENSURE PERMISSIONS FOR ADMIN COMMAND
+        if (!member.hasPermission(Permission.MANAGE_ROLES) || !member.hasPermission(Permission.MESSAGE_MANAGE)) {
+            event.replyEmbeds(EmbedManager.error("You Lack Permissions", "You must have both MANAGE_ROLES and MESSAGE_MANAGE permissions to create reaction roles.")).setEphemeral(true).queue();
+            return;
+        }
+
+        if (!guild.getSelfMember().hasPermission(Permission.MESSAGE_MANAGE, Permission.MESSAGE_ADD_REACTION)) {
+            event.replyEmbeds(EmbedManager.error("Bot Missing Permissions", guild.getSelfMember().getAsMention() + " needs the MESSAGE_MANAGE and MESSAGE_ADD_REACTION permissions to create reaction roles.")).setEphemeral(true).queue();
+            return;
+        }
+
+        // 2. GET ONLY NUMBERS FROM MESSAGE ID GIVEN + ROLE AND EMOJI
+        String rawMessageId = event.getOption("messageid").getAsString();
+        String messageId = rawMessageId.replaceAll("[^0-9]", "");
+
+        String emojiString = event.getOption("emoji").getAsString();
+        Role role = event.getOption("role").getAsRole();
+
+        // 3. ENSURE ROLE CAN BE GIVEN (ROLE POSITIONS)
+
+        if (role.getPosition() >= guild.getSelfMember().getRoles().get(0).getPosition()) {
+            event.replyEmbeds(EmbedManager.error("Cannot Assign Role", guild.getSelfMember().getAsMention() + "'s highest role must be above " + role.getAsMention() + " in order to use this feature.")).setEphemeral(true).queue();
+            return;
+        }
+
+        // 4. ACTUALLY GET THE EMOJI AS AN EMOJI
+
+        Emoji emoji;
+
+        try {
+            emoji = Emoji.fromFormatted(emojiString);
+        } catch (Exception e) {
+            event.replyEmbeds(EmbedManager.error("Emoji Error", "The emoji given `" + emojiString + "` seems to be invalid. Please try a different emoji.")).setEphemeral(true).queue();
+            return;
+        }
+
+        event.getChannel().retrieveMessageById(messageId).queue(message -> {
+            // 5. SAVE REACTION ROLE TO THE DATABASE
+            // use emoji.getFormatted just in case something fucks up somewhere along the line
+            dbRepo.setReactionRole(guild.getId(), messageId, emoji.getFormatted(), role.getId());
+
+            message.addReaction(emoji).queue(
+                    success -> { // if works
+                        event.getHook().editOriginalEmbeds(EmbedManager.success("Reaction Role Created", "The reaction role `" + emojiString + " -> " + role.getAsMention() + "` has been created successfully.")).queue();
+                    },
+                    error -> { // if not works
+                        event.getHook().editOriginalEmbeds(EmbedManager.error("Reaction Failed", "The database was updated, but I couldn't add the reaction to the message. Try adding it yourself and it should work.")).queue();
+                    }
+            );
+        }, error -> {
+            event.getHook().editOriginalEmbeds(EmbedManager.error("Message Not Found", "The message was not found in the currrent channel. Please run the command in the same channel the reaction role message is located in."));
+        });
+
     }
 
     private void handleAdminNukeCommand(SlashCommandInteractionEvent event) {

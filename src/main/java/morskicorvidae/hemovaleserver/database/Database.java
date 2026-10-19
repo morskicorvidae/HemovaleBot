@@ -82,6 +82,19 @@ public class Database {
                 PRIMARY KEY (guild_id, user_id)
             )
         """);
+
+        // 6. Reaction Roles Table
+        // Stores.. well... what do you think? Lmfao. Reaction roles obviously.
+        // Use emoji:getFormatted
+        statement.execute("""
+            CREATE TABLE IF NOT EXISTS reaction_roles (
+                guild_id TEXT,
+                message_id TEXT,
+                emoji TEXT,
+                role_id TEXT,
+                PRIMARY KEY (guild_id, message_id, emoji)
+            )
+        """);
     }
 
     public Connection getConnection() {

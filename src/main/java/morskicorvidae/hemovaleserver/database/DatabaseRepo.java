@@ -263,6 +263,53 @@ public class DatabaseRepo {
         }
     }
 
+    public void setReactionRole(String guildId, String messageId, String emoji, String roleId) {
+        String sql = """
+            INSERT INTO reaction_roles (guild_id, message_id, emoji, role_id) 
+            VALUES (?, ?, ?, ?) 
+            ON CONFLICT(guild_id, message_id, emoji) DO UPDATE SET role_id = excluded.role_id
+        """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, messageId);
+            statement.setString(3, emoji);
+            statement.setString(4, roleId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Setting reaction role FAILURE " + e.getMessage());
+        }
+    }
+
+    public String getReactionRole(String guildId, String messageId, String emoji) {
+        String sql = "SELECT role_id FROM reaction_roles WHERE guild_id = ? AND message_id = ? AND emoji = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, messageId);
+            statement.setString(3, emoji);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("role_id");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting reaction role FAILURE " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void deleteReactionRole(String guildId, String messageId, String emoji) {
+        String sql = "DELETE FROM reaction_roles WHERE guild_id = ? AND message_id = ? AND emoji = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, messageId);
+            statement.setString(3, emoji);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Deleting reaction role FAILURE " + e.getMessage());
+        }
+    }
+
     public List<String> getSiredUsers(String guildId, String sireId) {
         List<String> siredUsers = new ArrayList<>();
         String sql = "SELECT user_id FROM vampire_family WHERE guild_id = ? AND sire_id = ?";
