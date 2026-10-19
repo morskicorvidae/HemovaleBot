@@ -203,4 +203,38 @@ public class DatabaseRepo {
         return null;
     }
 
+    public String getUserSireId(String guildId, String userId) {
+        String sql = "SELECT sire_id FROM vampire_family WHERE guild_id = ? AND user_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, userId);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("sire_id");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting user sire FAILURE " + e.getMessage());
+        }
+
+        // If not found, create the user level and return a holder for it.
+        return null;
+    }
+
+    public void setUserSireId(String guildId, String userId, String sireId) {
+        String sql = """
+            INSERT INTO vampire_family (guild_id, user_id, sire_id) 
+            VALUES (?, ?, ?) 
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET sire_id = excluded.sire_id
+        """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, userId);
+            statement.setString(3, sireId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Setting user sire FAILURE " + e.getMessage());
+        }
+    }
+
 }

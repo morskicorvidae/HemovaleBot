@@ -72,11 +72,19 @@ public class Main extends ListenerAdapter {
         SlashCommandData joinroleCommand = Commands.slash("joinrole", "Pick a role which all members get when joining. | /joinrole [role]");
         joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.", true);
 
-        SlashCommandData profileCommand = Commands.slash("profile", "View your profile card.");
+        SlashCommandData profileCommand = Commands.slash("profile", "View your, or another members, profile card.");
         profileCommand.addOption(OptionType.USER, "user", "The user whose profile you wish to view");
 
+        SlashCommandData vampireCommand = Commands.slash("vampire", "Vampire family related commands");
+
+        SubcommandData sireSubcommand = new SubcommandData("sire", "Request to sire another user (passively gain experience from them)");
+        sireSubcommand.addOption(OptionType.USER, "user", "The user you wish to sire");
+        SubcommandData lineageCommand = new SubcommandData("lineage", "View your own lineage within this guild.");
+
+        vampireCommand.addSubcommands(sireSubcommand, lineageCommand);
+
         for(Guild guild : event.getJDA().getGuilds()) {
-            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand).queue();
+            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand).queue();
         }
     }
 

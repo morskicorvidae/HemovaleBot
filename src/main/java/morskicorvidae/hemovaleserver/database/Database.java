@@ -71,6 +71,17 @@ public class Database {
                 PRIMARY KEY (guild_id)
             )
         """);
+
+        // 5. Vampire Family Table
+        // Stores who is someone is sired to (a sire gains 5% of the fledgling's xp, passively)
+        statement.execute("""
+            CREATE TABLE IF NOT EXISTS vampire_family (
+                guild_id TEXT,
+                user_id TEXT,
+                sire_id TEXT,
+                PRIMARY KEY (guild_id, user_id)
+            )
+        """);
     }
 
     public Connection getConnection() {
