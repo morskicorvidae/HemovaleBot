@@ -13,12 +13,15 @@ import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
+import net.dv8tion.jda.api.interactions.components.ActionRow;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -78,11 +81,14 @@ public class Main extends ListenerAdapter {
 
         SlashCommandData vampireCommand = Commands.slash("vampire", "Vampire family related commands");
 
-        SubcommandData sireSubcommand = new SubcommandData("sire", "Request to sire another user (passively gain experience from them)");
-        sireSubcommand.addOption(OptionType.USER, "user", "The user you wish to sire");
+        SubcommandData sireSubcommand = new SubcommandData("sire", "Request to sire another user (passively gain experience from them) | /vampire sire [user]");
+        sireSubcommand.addOption(OptionType.USER, "user", "The user you wish to sire", true);
         SubcommandData lineageCommand = new SubcommandData("lineage", "View your own lineage within this guild.");
 
-        vampireCommand.addSubcommands(sireSubcommand, lineageCommand);
+        SubcommandData unsireSubcommand = new SubcommandData("unsire", "No longer sire someone you currently sire. | /vampire unsire [user]");
+        unsireSubcommand.addOption(OptionType.USER, "user", "The user you wish to no longer sire", true);
+
+        vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand);
 
         for(Guild guild : event.getJDA().getGuilds()) {
             guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand).queue();
@@ -129,7 +135,6 @@ public class Main extends ListenerAdapter {
         System.out.println("handle level up IS being run actually");
         event.getMessage().reply(member.getAsMention() + " has ascended to **Level " + newLevel + "**!").queue();
 
-        // 2. FIND NEW ROLES
         List<DatabaseRepo.LevelRoleHolder> allRoles = dbRepo.getAllLevelRoles(guild.getId());
 
         Role roleToGive = null;
@@ -269,11 +274,130 @@ public class Main extends ListenerAdapter {
         switch (event.getSubcommandName()) {
             case "lineage" -> handleVampireLineageCommand(event);
             case "sire" -> handleVampireSireCommand(event);
+            case "unsire" -> handleVampireUnsireCommand(event);
         }
     }
 
-    private void handleVampireSireCommand(SlashCommandInteractionEvent event) {
+    private void handleVampireUnsireCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member sire = Objects.requireNonNull(event.getMember());
+        Member target = event.getOption("user").getAsMember();
 
+        String existingSireId = dbRepo.getUserSireId(guild.getId(), target.getId());
+        if (!Objects.equals(existingSireId, sire.getId())) {
+            event.replyEmbeds(EmbedManager.error("User Not Sired By You", target.getAsMention() + " is not sired to you.")).queue();
+            return;
+        }
+
+        dbRepo.setUserSireId(guild.getId(), target.getId(), null);
+
+        event.replyEmbeds(EmbedManager.success("User Un-Sired", target.getAsMention() + " is now no longer your sire.")).queue();
+    }
+
+    private void handleVampireSireCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member sire = Objects.requireNonNull(event.getMember());
+        Member target = event.getOption("user").getAsMember();
+
+        if (sire.getId().equals(target.getId())) {
+            event.replyEmbeds(EmbedManager.error("Not Allowed", "You cannot sire yourself.")).queue();
+            return;
+        }
+
+        if (target.getUser().isBot()) {
+            event.replyEmbeds(EmbedManager.error("Not Allowed", "You cannot sire a bot.")).queue();
+            return;
+        }
+
+        String existingSire = dbRepo.getUserSireId(guild.getId(), target.getId());
+        if (existingSire != null) {
+            event.replyEmbeds(EmbedManager.error("User Already Sired", target.getAsMention() + " already belongs to another dynasty.")).queue();
+            return;
+        }
+
+        DatabaseRepo.UserLevelHolder sireLevel = dbRepo.getUserLevel(guild.getId(), sire.getId());
+
+        String buttonIdAccept = "sire_accept:" + sire.getId() + ":" + guild.getId();
+        String buttonIdReject = "sire_reject:" + sire.getId() + ":" + guild.getId();
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Dynastic Request")
+                .setDescription("**" + sire.getEffectiveName() + "** (Level " + sireLevel.level() + ") wishes to sire you in **" + guild.getName() + "**!")
+                .addField("What does this actually do?", "If you accept, you will become part of their lineage and they will passively gain a small amount of XP whenever you level up.", false)
+                .setColor(EmbedManager.NEUTRAL)
+                .setThumbnail(sire.getEffectiveAvatarUrl())
+                .setFooter("This request will expire if ignored.");
+
+        target.getUser().openPrivateChannel().queue(privateChannel -> {
+            privateChannel.sendMessageEmbeds(embed.build())
+                    .setComponents(
+                            ActionRow.of(
+                                    Button.success(buttonIdAccept, "Accept"),
+                                    Button.danger(buttonIdReject, "Reject")
+                            )
+                    )
+                    .queue(
+                            success -> event.replyEmbeds(EmbedManager.success("Request Sent", "A siring request has been sent to " + target.getAsMention() + "'s DMs.")).queue(),
+                            error -> event.replyEmbeds(EmbedManager.error("DM Failed", "I could not DM " + target.getAsMention() + ". They may have DMs disabled.")).queue()
+                    );
+        }, throwable -> {
+            event.replyEmbeds(EmbedManager.error("DM Failed", "I could not DM " + target.getAsMention() + ". They may have DMs disabled.")).queue();
+        });
+    }
+
+    @Override
+    public void onButtonInteraction(ButtonInteractionEvent event) {
+        String[] idParts = event.getComponentId().split(":"); // action:sireId:guildId
+        String action = idParts[0];
+
+        if (action.equals("sire_accept") || action.equals("sire_reject")) {
+            String sireId = idParts[1];
+            String guildId = idParts[2];
+            String targetId = event.getUser().getId(); // the target is the person who presses the accept/reject button
+
+            Guild guild = event.getJDA().getGuildById(guildId);
+
+            if (guild == null) {
+                event.editMessage("The bot seems to have left the server.").setComponents().queue();
+                return;
+            }
+
+            Member target = guild.getMemberById(targetId);
+            Member sire = guild.getMemberById(sireId);
+
+            if (target == null || sire == null) {
+                event.editMessage("Either you, the sire, or both have left the server and therefore the request is cancelled.").setComponents().queue();
+                return;
+            }
+
+            if (action.equals("sire_reject")) {
+                event.editMessageEmbeds(
+                        new EmbedBuilder()
+                                .setTitle("Sire Request Rejected")
+                                .setDescription("You have rejected " + sire.getEffectiveName() + "'s request to sire you.")
+                                .setColor(EmbedManager.ERROR)
+                                .build()
+                ).setComponents().queue();
+                return;
+            }
+
+            String existingSire = dbRepo.getUserSireId(guildId, targetId);
+            if (existingSire != null) {
+                event.editMessage("You are already sired by someone else.").setComponents().queue();
+                return;
+            }
+
+            dbRepo.setUserSireId(guildId, targetId, sireId);
+
+            event.editMessageEmbeds(
+                    new EmbedBuilder()
+                            .setTitle("Sire Request Accepted")
+                            .setDescription("You have accepted " + sire.getEffectiveName() + "'s request. You are now part of their lineage!")
+                            .setColor(EmbedManager.SUCCESS)
+                            .build()
+            ).setComponents().queue();
+
+        }
     }
 
     private void handleVampireLineageCommand(SlashCommandInteractionEvent event) {
