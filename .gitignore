@@ -9,6 +9,7 @@ env.properties
 .DS_Store
 *.db
 *.db-*
+*.svg
 
 ### IntelliJ IDEA ###
 .idea
