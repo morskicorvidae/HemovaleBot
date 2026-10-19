@@ -7,10 +7,8 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
-import net.dv8tion.jda.api.entities.Guild;
-import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.MessageEmbed;
-import net.dv8tion.jda.api.entities.Role;
+import net.dv8tion.jda.api.entities.*;
+import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -19,10 +17,14 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.requests.restaction.RoleAction;
 
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 public class Main extends ListenerAdapter {
 
@@ -78,8 +80,12 @@ public class Main extends ListenerAdapter {
                 handleRoleCommand(event);
                 break;
             case "joinrole": {
+                Guild guild = event.getGuild();
                 Role joinRole = event.getInteraction().getOption("role").getAsRole();
-                MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
+
+                dbRepo.updateJoinRole(guild.getId(), joinRole.getId());
+
+                MessageEmbed reply = EmbedManager.success("Set Join Role Successfully", "Users will now receive " + joinRole.getAsMention() + " upon joining the server!");
                 event.replyEmbeds(reply).queue();
                 break;
             }
@@ -99,12 +105,182 @@ public class Main extends ListenerAdapter {
     }
 
     private void handleRoleUpdateCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        List<DatabaseRepo.LevelRoleHolder> dbRoles = dbRepo.getAllLevelRoles(guild.getId());
+
+        // STEP 1. PERMISSIONS + ENSURE THERE ACTUALLY ARE ROLES
+        if (!event.getMember().hasPermission(Permission.MANAGE_ROLES)) {
+            event.replyEmbeds(EmbedManager.error("You lack permissions!", "Required permission: MANAGE_ROLES")).queue();
+            return;
+        }
+
+        if (dbRoles.isEmpty()) {
+            event.replyEmbeds(EmbedManager.neutral("No Roles", "There aren't any roles, so updating is not necessary.")).queue();
+            return;
+        }
+
+        Role botHighestRole = guild.getSelfMember().getRoles().get(0);
+
+        // STEP 2. BASICALLY JUST DO THE UPDATE
+        event.deferReply().queue();
+
+        List<String> changedCosmeticColors = new ArrayList<>();
+        List<String> cosmeticRolesRecreated = new ArrayList<>();
+        List<String> rolesDeletedDb = new ArrayList<>();
+
+        for (DatabaseRepo.LevelRoleHolder roleHolder : dbRoles) {
+            Role role = guild.getRoleById(roleHolder.roleId());
+            Role colorRole = guild.getRoleById(roleHolder.colorRoleId());
+
+            if (role == null) {
+                // Original role has been deleted
+                boolean colorRoleNull = colorRole == null;
+                if(!colorRoleNull) colorRole.delete().queue();
+
+                dbRepo.deleteLevelRole(guild.getId(), roleHolder.roleId());
+                dbRepo.deletePreferencesForRole(guild.getId(), roleHolder.roleId());
+                rolesDeletedDb.add("Deleted internal data for missing role ID: `" + roleHolder.roleId() + "`!");
+
+                if (!colorRoleNull) {
+                    rolesDeletedDb.add("+ Deleted vestigial color role for missing ID: `" + roleHolder.roleId() + "`");
+                }
+                continue;
+            }
+
+            if (colorRole == null) {
+                // Color role has been deleted but level role remains; recreate it
+                guild.createRole()
+                        .setName(toHex(role.getColor()))
+                        .setColor(role.getColor())
+                        .setPermissions(0L)
+                        .setMentionable(false)
+                        .setHoisted(false)
+                        .queue(cosmeticRole -> {
+                            guild.modifyRolePositions().selectPosition(cosmeticRole).moveBelow(botHighestRole).queue();
+                            dbRepo.updateColorRoleId(guild.getId(), role.getId(), cosmeticRole.getId());
+                        });
+                cosmeticRolesRecreated.add("Re-created cosmetic role for " + role.getAsMention());
+                continue; // Skip color check since we literally just made it with the right color when creating it lol
+            }
+
+            // Check for cosmetic roles with the wrong color
+            if (!Objects.equals(colorRole.getColorRaw(), role.getColorRaw())) {
+                colorRole.getManager().setColor(role.getColor()).queue();
+                colorRole.getManager().setName(toHex(role.getColor())).queue();
+                changedCosmeticColors.add(colorRole.getAsMention() + " -> " + role.getAsMention());
+            }
+        }
+
+        // STEP 3. BUILD EMBED
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Update Log")
+                .setColor(EmbedManager.SUCCESS);
+
+        if (changedCosmeticColors.isEmpty()) embed.addField("Cosmetic Roles", "No color changes were necessary.", false);
+        else embed.addField("Cosmetic Roles | Changed Color", String.join("\n", changedCosmeticColors), false);
+
+        if (rolesDeletedDb.isEmpty()) embed.addField("Deleted Roles/Data", "No deletions were necessary.", false);
+        else embed.addField("Deleted Roles/Data", String.join("\n", rolesDeletedDb), false);
+
+        if (cosmeticRolesRecreated.isEmpty()) embed.addField("Re-created Cosmetic Roles", "No re-creations were necessary.", false);
+        else embed.addField("Re-created Cosmetic Roles", String.join("\n", cosmeticRolesRecreated), false);
+
+        event.getHook().editOriginalEmbeds(embed.build()).queue();
     }
 
     private void handleRoleListCommand(SlashCommandInteractionEvent event) {
+        // Not sure why Intellij is saying to Objects.requireNonNull here. Perhaps user might use in DMs. Might need to fix later time.
+        List<DatabaseRepo.LevelRoleHolder> dbRoles = dbRepo.getAllLevelRoles(Objects.requireNonNull(event.getGuild()).getId());
+
+        // STEP 1. ENSURE THERE ACTUALLY ARE ROLES
+
+        if (dbRoles.isEmpty()) {
+            event.replyEmbeds(EmbedManager.neutral("No Roles", "There aren't any roles yet.")).queue();
+            return;
+        }
+
+        // STEP 2. PRINT A NICE AND PRETTY LIST OF THEM
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Leveling Roles")
+                .setColor(EmbedManager.NEUTRAL);
+
+        for (DatabaseRepo.LevelRoleHolder data : dbRoles) {
+            Role role = event.getGuild().getRoleById(data.roleId());
+            String roleMention = (role != null) ? role.getAsMention() : "*(Invalid?)*";
+            embed.addField("Level " + data.levelRequirement(), roleMention, true);
+        }
+
+        event.replyEmbeds(embed.build()).queue();
     }
 
     private void handleRoleUseColorCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        User user = event.getUser();
+        Member member = event.getMember();
+        Role roleWanted = event.getOption("role").getAsRole();
+
+        System.out.println("Executing /role usecolor [" + roleWanted.getId() + "/ '" + roleWanted.getName() + "']");
+
+        // STEP 1. GET THE USER'S LEVEL
+        DatabaseRepo.UserLevelHolder level = dbRepo.getUserLevel(guild.getId(), user.getId());
+
+        // SET 2. GET THE REQUIRED LEVEL FOR THE ROLE
+
+        // replace all this with an sql command (in DatabaseRepo.java) later, genuinely
+
+        List<DatabaseRepo.LevelRoleHolder> roleHolders = dbRepo.getAllLevelRoles(guild.getId());
+        DatabaseRepo.LevelRoleHolder roleHolder = null;
+        List<String> cosmeticRoleIds = new ArrayList<>();
+
+        for(DatabaseRepo.LevelRoleHolder holder : roleHolders) {
+            if(Objects.equals(holder.roleId(), roleWanted.getId())) {
+                roleHolder = holder;
+            }
+            cosmeticRoleIds.add(holder.colorRoleId());
+        }
+
+        if(roleHolder == null) {
+            event.replyEmbeds(EmbedManager.error("Role Not Applicable", "The role you selected is not a level role.")).queue();
+            return;
+        }
+
+        int requiredLevel = roleHolder.levelRequirement();
+
+        // STEP 3. COMPARE
+
+        if(requiredLevel > level.level()) {
+            event.replyEmbeds(EmbedManager.error("You Don't Have This Role", "The role you selected is of a higher level (" + requiredLevel + ") than you are (your current level is " + level.level() + "!)")).queue();
+            return;
+        }
+
+        // Otherwise, let the user have that preference.
+        // But first delete all color roles they have.
+
+        assert member != null;
+        for(Role role : member.getRoles()) {
+            if(cosmeticRoleIds.contains(role.getId())) {
+                guild.removeRoleFromMember(member, role).queue();
+            }
+        }
+
+        Role colorRole = Objects.requireNonNull(guild.getRoleById(roleHolder.colorRoleId()));
+        guild.addRoleToMember(member, colorRole).queue();
+
+        event.replyEmbeds(EmbedManager.success("Assigned Color", "You have been assigned the cosmetic color role " + colorRole.getAsMention())).queue();
+    }
+
+    @Override
+    public void onGuildMemberJoin(GuildMemberJoinEvent event) {
+        Guild guild = event.getGuild();
+        Member member = event.getMember();
+
+        String roleId = dbRepo.getJoinRole(guild.getId());
+
+        if(roleId != null) {
+            Role role = guild.getRoleById(roleId);
+            guild.addRoleToMember(member, role).queue();
+        }
     }
 
     private void handleRoleAddCommand(SlashCommandInteractionEvent event) {

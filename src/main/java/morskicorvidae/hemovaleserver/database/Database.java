@@ -61,6 +61,16 @@ public class Database {
                 PRIMARY KEY (guild_id, user_id)
             )
         """);
+
+        // 4. Guild Config Table
+        // Stores the configuration of guilds (for now just the joining role)
+        statement.execute("""
+            CREATE TABLE IF NOT EXISTS guild_config (
+                guild_id TEXT,
+                join_role_id TEXT,
+                PRIMARY KEY (guild_id)
+            )
+        """);
     }
 
     public Connection getConnection() {
