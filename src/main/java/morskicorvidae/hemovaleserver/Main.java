@@ -31,9 +31,6 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 public class Main extends ListenerAdapter {
 
@@ -89,9 +86,9 @@ public class Main extends ListenerAdapter {
         SubcommandData unsireSubcommand = new SubcommandData("unsire", "No longer sire someone you currently sire. | /vampire unsire [user]");
         unsireSubcommand.addOption(OptionType.USER, "user", "The user you wish to no longer sire", true);
 
-        SubcommandData sireingSubcommand = new SubcommandData("sireing", "Lists all the users you are currently sireing in this guild. | /vampire sireing");
+        SubcommandData siringSubcommand = new SubcommandData("siring", "Lists all the users you are currently siring in this guild. | /vampire siring");
 
-        vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand, sireingSubcommand);
+        vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand, siringSubcommand);
 
         SlashCommandData adminCommand = Commands.slash("admin", "Admin related commands for server management");
 
@@ -354,23 +351,23 @@ public class Main extends ListenerAdapter {
             case "lineage" -> handleVampireLineageCommand(event);
             case "sire" -> handleVampireSireCommand(event);
             case "unsire" -> handleVampireUnsireCommand(event);
-            case "sireing" -> handleVampireSireingCommand(event);
+            case "siring" -> handleVampireSiringCommand(event);
         }
     }
 
-    private void handleVampireSireingCommand(SlashCommandInteractionEvent event) {
+    private void handleVampireSiringCommand(SlashCommandInteractionEvent event) {
         Guild guild = Objects.requireNonNull(event.getGuild());
         Member sire = Objects.requireNonNull(event.getMember());
 
-        List<String> sireing = dbRepo.getSiredUsers(guild.getId(), sire.getId());
+        List<String> siring = dbRepo.getSiredUsers(guild.getId(), sire.getId());
 
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle("Users You Sire")
                 .setColor(EmbedManager.SUCCESS)
                 .setDescription("*Sire a user using /vampire sire [user], or unsire them using /vampire unsire [user]*");
 
-        if(!sireing.isEmpty()) {
-            for (String sired : sireing) {
+        if(!siring.isEmpty()) {
+            for (String sired : siring) {
                 Member siredMember = guild.getMemberById(sired);
 
                 if (siredMember == null) continue;
