@@ -168,6 +168,9 @@ public class Main extends ListenerAdapter {
                 event.replyEmbeds(reply).queue();
                 break;
             }
+            case "vampire": {
+                handleVampireCommand(event);
+            }
             case "profile": {
                 handleProfileCommand(event);
             }
@@ -230,6 +233,21 @@ public class Main extends ListenerAdapter {
             case "list" -> handleRoleListCommand(event);
             case "update" -> handleRoleUpdateCommand(event);
         }
+    }
+
+    private void handleVampireCommand(SlashCommandInteractionEvent event) {
+        switch (event.getSubcommandName()) {
+            case "lineage" -> handleVampireLineageCommand(event);
+            case "sire" -> handleVampireSireCommand(event);
+        }
+    }
+
+    private void handleVampireSireCommand(SlashCommandInteractionEvent event) {
+
+    }
+
+    private void handleVampireLineageCommand(SlashCommandInteractionEvent event) {
+
     }
 
     private void handleRoleUpdateCommand(SlashCommandInteractionEvent event) {
