@@ -13,6 +13,7 @@ import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
@@ -72,6 +73,7 @@ public class Main extends ListenerAdapter {
         joinroleCommand.addOption(OptionType.ROLE, "role", "The role which all members get when joining.", true);
 
         SlashCommandData profileCommand = Commands.slash("profile", "View your profile card.");
+        profileCommand.addOption(OptionType.USER, "user", "The user whose profile you wish to view");
 
         for(Guild guild : event.getJDA().getGuilds()) {
             guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand).queue();
@@ -169,7 +171,15 @@ public class Main extends ListenerAdapter {
 
     private void handleProfileCommand(SlashCommandInteractionEvent event) {
         Guild guild = Objects.requireNonNull(event.getGuild());
-        Member member = Objects.requireNonNull(event.getMember());
+
+        Member eventMember = event.getMember();
+
+        OptionMapping option = event.getOption("user");
+        if(option != null) {
+            eventMember = event.getOption("user").getAsMember();
+        }
+
+        Member member = eventMember; // get around the lambda stuff because why not
 
         // 1. GET INFORMATION ABOUT THE USER
         DatabaseRepo.UserLevelHolder userData = dbRepo.getUserLevel(guild.getId(), member.getId());
