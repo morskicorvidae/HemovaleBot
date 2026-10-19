@@ -10,6 +10,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.*;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -88,10 +89,19 @@ public class Main extends ListenerAdapter {
         SubcommandData unsireSubcommand = new SubcommandData("unsire", "No longer sire someone you currently sire. | /vampire unsire [user]");
         unsireSubcommand.addOption(OptionType.USER, "user", "The user you wish to no longer sire", true);
 
-        vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand);
+        SubcommandData sireingSubcommand = new SubcommandData("sireing", "Lists all the users you are currently sireing in this guild. | /vampire sireing");
+
+        vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand, sireingSubcommand);
+
+        SlashCommandData adminCommand = Commands.slash("admin", "Admin related commands for server management");
+
+        SubcommandData nukeCommand = new SubcommandData("nuke", "Bulk delete at most 100 messages within this channel. | /admin nuke [amount]");
+        nukeCommand.addOption(OptionType.INTEGER, "amount", "Number of messages to delete (1-100).", true);
+
+        adminCommand.addSubcommands(nukeCommand);
 
         for(Guild guild : event.getJDA().getGuilds()) {
-            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand).queue();
+            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand).queue();
         }
     }
 
@@ -175,7 +185,6 @@ public class Main extends ListenerAdapter {
         }
     }
 
-
     @Override
     public void onGuildMemberRemove(GuildMemberRemoveEvent event) {
         dbRepo.clearChildrenOfSire(event.getGuild().getId(), event.getMember().getUser().getId());
@@ -210,10 +219,80 @@ public class Main extends ListenerAdapter {
                 handleProfileCommand(event);
                 break;
             }
+            case "admin": {
+                handleAdminCommand(event);
+                break;
+            }
             default: // Shouldn't happen!
                 MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
                 event.replyEmbeds(reply).queue();
         }
+    }
+
+    private void handleAdminCommand(SlashCommandInteractionEvent event) {
+        switch(event.getSubcommandName()) {
+            case "nuke" -> handleAdminNukeCommand(event);
+        }
+    }
+
+    private void handleAdminNukeCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member member = Objects.requireNonNull(event.getMember());
+
+        // 1. MAKE SURE USER HAS PERMISSION (BECAUSE THATS KINDA IMPORTANT LMFAO)
+        if (!member.hasPermission(Permission.MESSAGE_MANAGE)) {
+            event.replyEmbeds(EmbedManager.error("You Lack Permissions", "You must have the MESSAGE_MANAGE permission to use this command.")).setEphemeral(true).queue();
+            return;
+        }
+
+        if (!guild.getSelfMember().hasPermission(event.getGuildChannel(), Permission.MESSAGE_MANAGE)) {
+            event.replyEmbeds(EmbedManager.error("Bot Missing Permissions", guild.getSelfMember().getAsMention() + " needs the MESSAGE_MANAGE permission to delete messages.")).setEphemeral(true).queue();
+            return;
+        }
+
+        int amount = event.getOption("amount").getAsInt();
+
+        // 2. ENSURE AMOUNT BETWEEN 1 AND 100
+        if (amount < 1 || amount > 100) {
+            event.replyEmbeds(EmbedManager.error("Amount Is Invalid", "You must delete between 1 and 100 messages. You entered " + amount + " messages.")).setEphemeral(true).queue();
+            return;
+        }
+
+        // 3. GET MESSAGES FROM MAXIMUM 14 DAYS AGO (ERM THANKS DISCORD API I GUESS? THAT JUST SEEMS SO IMPORTANT DOESN'T IT)
+        event.deferReply(true).queue();
+
+        TextChannel channel = event.getChannel().asTextChannel();
+
+        // 3. Retrieve and Delete
+        channel.getHistory().retrievePast(amount).queue(messages -> {
+            if (messages.isEmpty()) {
+                event.getHook().editOriginalEmbeds(EmbedManager.error("Cannot Delete Messages", "There are no messages in this channel.")).queue();
+                return;
+            }
+
+            long fourteenDaysAgo = System.currentTimeMillis() - (14L * 24 * 60 * 60 * 1000);
+
+            List<Message> validMessages = messages.stream()
+                    .filter(m -> m.getTimeCreated().toInstant().toEpochMilli() > fourteenDaysAgo)
+                    .toList();
+
+            if (validMessages.isEmpty()) {
+                event.getHook().editOriginalEmbeds(EmbedManager.error("Messages Too Old", "The `wonderful` Discord API only allows the deletion of messages below 14 days of age. *clap clap clap*")).queue();
+                return;
+            }
+
+            if (validMessages.size() == 1) {
+                validMessages.get(0).delete().queue(
+                        success -> event.getHook().editOriginalEmbeds(EmbedManager.success("Success", "Successfully nuked 1 message.")).queue(),
+                        error -> event.getHook().editOriginalEmbeds(EmbedManager.error("Error", "Failed to delete the message.")).queue()
+                );
+            } else {
+                channel.deleteMessages(validMessages).queue(
+                        success -> event.getHook().editOriginalEmbeds(EmbedManager.success("Success", "Successfully nuked " + validMessages.size() + " messages.")).queue(),
+                        error -> event.getHook().editOriginalEmbeds(EmbedManager.error("Error", "Failed to delete messages. Error message is `" + error.getMessage() + "`")).queue()
+                );
+            }
+        });
     }
 
     private void handleProfileCommand(SlashCommandInteractionEvent event) {
@@ -276,7 +355,47 @@ public class Main extends ListenerAdapter {
             case "lineage" -> handleVampireLineageCommand(event);
             case "sire" -> handleVampireSireCommand(event);
             case "unsire" -> handleVampireUnsireCommand(event);
+            case "sireing" -> handleVampireSireingCommand(event);
         }
+    }
+
+    private void handleVampireSireingCommand(SlashCommandInteractionEvent event) {
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        Member sire = Objects.requireNonNull(event.getMember());
+
+        List<String> sireing = dbRepo.getSiredUsers(guild.getId(), sire.getId());
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Users You Sire")
+                .setColor(EmbedManager.SUCCESS)
+                .setDescription("*Sire a user using /vampire sire [user], or unsire them using /vampire unsire [user]*");
+
+        if(!sireing.isEmpty()) {
+            for (String sired : sireing) {
+                Member siredMember = guild.getMemberById(sired);
+
+                if (siredMember == null) continue;
+
+                DatabaseRepo.UserLevelHolder levelHolder = dbRepo.getUserLevel(guild.getId(), sired);
+                DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), levelHolder.level());
+                Role role = guild.getRoleById(roleHolder.roleId());
+                String roleName;
+
+                if(role != null) {
+                    roleName = role.getName();
+                } else {
+                    roleName = "No Title";
+                }
+
+                embed.addField(siredMember.getAsMention(), "**Level " + levelHolder.level() + "** (" + roleName + ")", false);
+            }
+        } else {
+            embed.setDescription("*You are not siring anybody. Request to sire a user using /vampire sire [user]*");
+            embed.setColor(EmbedManager.ERROR);
+            embed.addField("*But I am siring someone in another server?*", "Your dynasties are attached to the guild they were created in, rather than transferring across multiple servers. Feel free to re-create your lineage in multiple servers if you wish.", false);
+        }
+
+        event.replyEmbeds(embed.build()).queue();
     }
 
     private void handleVampireUnsireCommand(SlashCommandInteractionEvent event) {
