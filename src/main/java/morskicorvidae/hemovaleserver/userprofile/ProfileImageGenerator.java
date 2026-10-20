@@ -46,7 +46,6 @@ public class ProfileImageGenerator {
 
         // 5. AND CONVERT THAT TO A PNG USING APACHE BATIK
 
-        // 5. Transcode SVG to PNG
         PNGTranscoder transcoder = new PNGTranscoder();
 
         transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, 480f);

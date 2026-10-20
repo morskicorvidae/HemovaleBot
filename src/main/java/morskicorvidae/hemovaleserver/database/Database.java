@@ -104,6 +104,7 @@ public class Database {
                 guild_id TEXT,
                 user_id TEXT,
                 species TEXT,
+                level INTEGER DEFAULT 5,
                 attack INTEGER DEFAULT 10,
                 defense INTEGER DEFAULT 10,
                 accuracy INTEGER DEFAULT 10,

@@ -2,6 +2,9 @@ package morskicorvidae.hemovaleserver;
 
 import morskicorvidae.hemovaleserver.database.Database;
 import morskicorvidae.hemovaleserver.database.DatabaseRepo;
+import morskicorvidae.hemovaleserver.species.BattleImageGenerator;
+import morskicorvidae.hemovaleserver.species.Pet;
+import morskicorvidae.hemovaleserver.species.Species;
 import morskicorvidae.hemovaleserver.userprofile.LevelCalculations;
 import morskicorvidae.hemovaleserver.userprofile.ProfileImageGenerator;
 import morskicorvidae.hemovaleserver.utils.EmbedManager;
@@ -16,17 +19,16 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent;
+import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.Commands;
-import net.dv8tion.jda.api.interactions.commands.build.OptionData;
-import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
-import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
+import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.requests.GatewayIntent;
@@ -37,6 +39,8 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 public class Main extends ListenerAdapter {
 
@@ -94,6 +98,22 @@ public class Main extends ListenerAdapter {
 
         SubcommandData siringSubcommand = new SubcommandData("siring", "Lists all the users you are currently siring in this guild. | /vampire siring");
 
+        SubcommandData adoptSubcommand = new SubcommandData("adopt", "Adopt a pet. /vampire pet adopt [species]");
+
+        OptionData speciesOption = new OptionData(OptionType.STRING, "species", "The species you wish to adopt.")
+                .setAutoComplete(true).setRequired(true);
+
+        SubcommandData abandonSubcommand = new SubcommandData("abandon", "Abandons your current pet.");
+        SubcommandData infoSubcommand = new SubcommandData("info", "Shows information about your current pet.");
+
+        adoptSubcommand.addOptions(speciesOption);
+
+        SubcommandGroupData petGroup = new SubcommandGroupData("pet", "Vampire pet related commands");
+
+        petGroup.addSubcommands(adoptSubcommand, abandonSubcommand, infoSubcommand);
+
+        vampireCommand.addSubcommandGroups(petGroup);
+
         vampireCommand.addSubcommands(sireSubcommand, lineageCommand, unsireSubcommand, siringSubcommand);
 
         SlashCommandData adminCommand = Commands.slash("admin", "Admin related commands for server management");
@@ -124,6 +144,26 @@ public class Main extends ListenerAdapter {
 
         for(Guild guild : event.getJDA().getGuilds()) {
             guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand, podcastCommand).queue();
+        }
+    }
+
+    @Override
+    public void onCommandAutoCompleteInteraction(CommandAutoCompleteInteractionEvent event) {
+        if (event.getName().equals("vampire") &&
+                Objects.equals(event.getSubcommandGroup(), "pet") &&
+                Objects.equals(event.getSubcommandName(), "adopt") &&
+                event.getFocusedOption().getName().equals("species")) {
+
+            String input = event.getFocusedOption().getValue().toLowerCase();
+
+            List<Command.Choice> choices = Species.COLLECTION.stream()
+                    .filter(s -> s.getName().toLowerCase().startsWith(input)
+                            || s.getInternalName().toLowerCase().startsWith(input))
+                    .limit(25)
+                    .map(s -> new Command.Choice(s.getName(), s.name()))
+                    .collect(Collectors.toList());
+
+            event.replyChoices(choices).queue();
         }
     }
 
@@ -557,13 +597,137 @@ public class Main extends ListenerAdapter {
     }
 
     private void handleVampireCommand(SlashCommandInteractionEvent event) {
-        switch (event.getSubcommandName()) {
+        String group = event.getSubcommandGroup();
+        String name  = event.getSubcommandName();
+
+        if (group.equals("pet")) {
+            switch (name) {
+                case "adopt" -> handleVampirePetAdoptCommand(event);
+                case "info" -> handleVampirePetInfoCommand(event);
+                case "abandon" -> handleVampirePetAbandonCommand(event);
+            }
+            return;
+        }
+
+        switch (name) {
             case "lineage" -> handleVampireLineageCommand(event);
-            case "sire" -> handleVampireSireCommand(event);
-            case "unsire" -> handleVampireUnsireCommand(event);
-            case "siring" -> handleVampireSiringCommand(event);
+            case "sire"    -> handleVampireSireCommand(event);
+            case "unsire"  -> handleVampireUnsireCommand(event);
+            case "siring"  -> handleVampireSiringCommand(event);
+            default -> event.reply("Unknown subcommand.").setEphemeral(true).queue();
         }
     }
+
+    private void handleVampirePetAbandonCommand(SlashCommandInteractionEvent event) {
+        String guildId = event.getGuild().getId();
+        String userId = event.getUser().getId();
+
+        Pet userPet = dbRepo.getUserPet(guildId, userId);
+
+        if(userPet == null) {
+            event.replyEmbeds(EmbedManager.error("No Pet", "You don't have a pet to abandon.")).queue();
+            return;
+        }
+
+        boolean abandoned = dbRepo.abandonPet(guildId, userId);
+
+        if(!abandoned) {
+            event.replyEmbeds(EmbedManager.error("Pet Didn't Get Abandoned", "The pet for some reason didn't get abandoned (this is totally a feature not a bug!!!)")).queue();
+            return;
+        }
+
+        event.replyEmbeds(EmbedManager.neutral("Pet Abandoned (Shame Upon You!)", "Your " + userPet.getSpecies().getName() + " (Level " + userPet.getLevel() + ") has been abandoned, to be on its own, and suffer. I ain't even gonna give you the nice green colour for this...")).queue();
+    }
+
+    private void handleVampirePetInfoCommand(SlashCommandInteractionEvent event) {
+        String guildId = event.getGuild().getId();
+        String userId = event.getUser().getId();
+
+        Pet userPet = dbRepo.getUserPet(guildId, userId);
+
+        if(userPet == null) {
+            event.replyEmbeds(EmbedManager.error("No Pet", "You don't have a pet to show information about.")).queue();
+            return;
+        }
+
+        EmbedBuilder petInfo = new EmbedBuilder()
+                .setTitle("Your " + userPet.getSpecies().getName() + "!")
+                .setColor(EmbedManager.SUCCESS)
+                .setDescription("*Level " + userPet.getLevel() + "*")
+                .addField("Attack", String.valueOf(userPet.getAttack()), true)
+                .addField("Defense", String.valueOf(userPet.getDefense()), true)
+                .addField("Accuracy", String.valueOf(userPet.getAccuracy()), true);
+
+        event.replyEmbeds(petInfo.build()).queue();
+    }
+
+    private void handleVampirePetAdoptCommand(SlashCommandInteractionEvent event) {
+        String speciesOption = event.getOption("species").getAsString();
+        String guildId = event.getGuild().getId();
+        String userId = event.getUser().getId();
+
+        if(dbRepo.getUserPet(guildId, userId) != null) {
+            event.replyEmbeds(EmbedManager.error("Already Have A Pet", "You already have a pet and so cannot adopt another one!")).queue();
+            return;
+        }
+
+        try {
+            Species species = Species.valueOf(speciesOption);
+            int level = 5;
+            int attack = ThreadLocalRandom.current().nextInt(1, 5);
+            int defense = ThreadLocalRandom.current().nextInt(1, 5);
+            int accuracy = ThreadLocalRandom.current().nextInt(1, 5);
+
+            Pet newPet = new Pet()
+                    .setGuildId(guildId)
+                    .setUserId(userId)
+                    .setSpecies(species)
+                    .setLevel(level)
+                    .setAttack(attack)
+                    .setDefense(defense)
+                    .setAccuracy(accuracy);
+
+            dbRepo.saveUserPet(newPet);
+
+            EmbedBuilder petInfo = new EmbedBuilder()
+                    .setTitle("Your " + species.getName() + "!")
+                    .setColor(EmbedManager.SUCCESS)
+                    .setDescription("*Adopted at Level " + level + "*")
+                    .addField("Attack", String.valueOf(attack), true)
+                    .addField("Defense", String.valueOf(defense), true)
+                    .addField("Accuracy", String.valueOf(accuracy), true);
+
+            event.replyEmbeds(petInfo.build()).queue();
+
+        } catch (IllegalArgumentException e) {
+            event.replyEmbeds(EmbedManager.error("Invalid Species", "I do not know what a `" + speciesOption + "` is.")).setEphemeral(true).queue();
+        }
+
+        /*
+        event.deferReply().queue();
+
+        // 3. CREATE THREAD SO THAT BOT DOES NOT FREEZE CREATING IMAGE
+
+        new Thread(() -> {
+            try {
+                byte[] imageBytes = BattleImageGenerator.generateBattleImage(
+                        Species.POOCHYENA,
+                        Species.POOCHYENA
+                );
+
+                // 4. SEND THE ACTUAL IMAGE
+                event.getHook().sendFiles(
+                        net.dv8tion.jda.api.utils.FileUpload.fromData(imageBytes, "battle.png")
+                ).queue();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                event.getHook().sendMessageEmbeds(EmbedManager.error("Error", "Failed to generate the battle image.")).queue();
+            }
+        }).start();
+         */
+    }
+
 
     private void handleVampireSiringCommand(SlashCommandInteractionEvent event) {
         Guild guild = Objects.requireNonNull(event.getGuild());
