@@ -298,6 +298,36 @@ public class DatabaseRepo {
         return null;
     }
 
+    public void updatePodcastCategory(String guildId, String categoryId) {
+        String sql = """
+            INSERT INTO guild_config (guild_id, podcast_category_id) 
+            VALUES (?, ?) 
+            ON CONFLICT(guild_id) DO UPDATE SET podcast_category_id = excluded.podcast_category_id
+        """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, categoryId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Updating podcast category FAILURE " + e.getMessage());
+        }
+    }
+
+    public String getPodcastCategory(String guildId) {
+        String sql = "SELECT podcast_category_id FROM guild_config WHERE guild_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return resultSet.getString("podcast_category_id");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting podcast category FAILURE " + e.getMessage());
+        }
+        return null;
+    }
+
     public void deleteReactionRole(String guildId, String messageId, String emoji) {
         String sql = "DELETE FROM reaction_roles WHERE guild_id = ? AND message_id = ? AND emoji = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {

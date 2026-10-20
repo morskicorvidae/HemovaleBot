@@ -10,6 +10,8 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.*;
+import net.dv8tion.jda.api.entities.channel.ChannelType;
+import net.dv8tion.jda.api.entities.channel.concrete.Category;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent;
@@ -22,6 +24,7 @@ import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
@@ -103,10 +106,24 @@ public class Main extends ListenerAdapter {
         reactroleCommand.addOption(OptionType.STRING, "emoji", "The emoji the role will be given from.", true);
         reactroleCommand.addOption(OptionType.ROLE, "role", "The role to be given.", true);
 
+        SlashCommandData podcastCommand = Commands.slash("podcast", "Podcast related commands");
+
+        OptionData categoryOption = new OptionData(OptionType.CHANNEL, "category", "The category to create podcasts in.", true)
+                .setChannelTypes(ChannelType.CATEGORY);
+
+        SubcommandData categorySubcommand = new SubcommandData("category", "Choose the text channel category which the podcasts will be created in.");
+        categorySubcommand.addOptions(categoryOption);
+
+        SubcommandData createSubcommand = new SubcommandData("create", "Creates a podcast for a user with a specific name to it. /podcast create [title] [user]");
+        createSubcommand.addOption(OptionType.STRING, "name", "The name of the podcast channel to create.", true);
+        createSubcommand.addOption(OptionType.USER, "user", "The user whom the podcast belongs to.", true);
+
+        podcastCommand.addSubcommands(categorySubcommand, createSubcommand);
+
         adminCommand.addSubcommands(nukeCommand, reactroleCommand);
 
         for(Guild guild : event.getJDA().getGuilds()) {
-            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand).queue();
+            guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand, podcastCommand).queue();
         }
     }
 
@@ -164,6 +181,8 @@ public class Main extends ListenerAdapter {
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
+        if(!event.isFromGuild()) return;
+
         Guild guild = event.getGuild();
 
         if(event.getAuthor().isBot()) return;
@@ -280,10 +299,79 @@ public class Main extends ListenerAdapter {
                 handleAdminCommand(event);
                 break;
             }
+            case "podcast": {
+                handlePodcastCommand(event);
+                break;
+            }
             default: // Shouldn't happen!
                 MessageEmbed reply = EmbedManager.error("Not implemented yet", "Command has not yet been implemented.");
                 event.replyEmbeds(reply).queue();
         }
+    }
+
+    private void handlePodcastCommand(SlashCommandInteractionEvent event) {
+        switch(event.getSubcommandName()) {
+            case "category" -> handlePodcastCategoryCommand(event);
+            case "create" -> handlePodcastCreateCommand(event);
+        }
+    }
+
+    private void handlePodcastCreateCommand(SlashCommandInteractionEvent event) {
+        if (!event.getMember().hasPermission(Permission.MANAGE_CHANNEL)) {
+            event.replyEmbeds(EmbedManager.error("You Lack Permissions!", "You need the MANAGE_CHANNEL permission to create a podcast channel.")).setEphemeral(true).queue();
+            return;
+        }
+
+        Guild guild = event.getGuild();
+
+        String categoryId = dbRepo.getPodcastCategory(guild.getId());
+
+        if(categoryId == null) {
+            event.replyEmbeds(EmbedManager.error("Category Missing", "The podcast category for this server is invalid or unknown. Set it using /podcast category [category]!")).queue();
+            return;
+        }
+
+        Category category = guild.getCategoryById(categoryId);
+
+        String channelName = event.getOption("name").getAsString();
+        Member member = event.getOption("user").getAsMember();
+
+        if(category == null) {
+            event.replyEmbeds(EmbedManager.error("Category Missing", "The podcast category for this server is invalid or unknown. Set it using /podcast category [category]!")).queue();
+            return;
+        }
+
+        category.createTextChannel(channelName)
+                .setTopic("Podcast for " + member.getEffectiveName())
+                .queue(channel -> {
+                    channel.sendMessage(member.getAsMention() + " This is your very own **podcast channel**").queue();
+                    event.replyEmbeds(EmbedManager.success("Podcast Created Successfully", "The podcast " + channel.getAsMention() + " has been created for " + member.getAsMention() + "!")).queue();
+                }, error -> {
+                    event.replyEmbeds(EmbedManager.error("Could Not Create Channel", "For some reason, the channel could not be created. Reason is " + error.getMessage())).queue();
+                });
+
+    }
+
+    private void handlePodcastCategoryCommand(SlashCommandInteractionEvent event) {
+        // 1. ENSURE PERMISSIONS
+        if (!event.getMember().hasPermission(Permission.MANAGE_CHANNEL)) {
+            event.replyEmbeds(EmbedManager.error("You Lack Permissions!", "You need the MANAGE_CHANNEL permission to set the podcast category.")).setEphemeral(true).queue();
+            return;
+        }
+
+        // 2. GET DATA AND UPDATE DATABASE WITH IT
+        Category category = event.getOption("category").getAsChannel().asCategory();
+        Guild guild = event.getGuild();
+
+        dbRepo.updatePodcastCategory(guild.getId(), category.getId());
+
+        // 3. MAKE THE USER FEEL COMFORTABLE WITH THEIR ACTIONS
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Podcast Category Set")
+                .setDescription("New podcast channels will now be created under **" + category.getName() + "**.")
+                .setColor(EmbedManager.SUCCESS);
+
+        event.replyEmbeds(embed.build()).queue();
     }
 
     private void handleAdminCommand(SlashCommandInteractionEvent event) {
@@ -591,85 +679,104 @@ public class Main extends ListenerAdapter {
         if (action.equals("sire_accept") || action.equals("sire_reject")) {
             String sireId = idParts[1];
             String guildId = idParts[2];
-            String targetId = event.getUser().getId(); // the target is the person who presses the accept/reject button
+            String targetId = event.getUser().getId();
 
             Guild guild = event.getJDA().getGuildById(guildId);
-
             if (guild == null) {
                 event.editMessage("The bot seems to have left the server.").setComponents().queue();
                 return;
             }
 
-            Member target = guild.getMemberById(targetId);
-            Member sire = guild.getMemberById(sireId);
+            // Cache will fuck things up if we don't do this :sob:
+            guild.retrieveMemberById(targetId).queue(target -> {
+                guild.retrieveMemberById(sireId).queue(sire -> {
 
-            if (target == null || sire == null) {
-                event.editMessage("Either you, the sire, or both have left the server and therefore the request is cancelled.").setComponents().queue();
-                return;
-            }
+                    if (action.equals("sire_reject")) {
+                        event.editMessageEmbeds(
+                                new EmbedBuilder()
+                                        .setTitle("Sire Request Rejected")
+                                        .setDescription("You have rejected " + sire.getEffectiveName() + "'s request to sire you.")
+                                        .setColor(EmbedManager.ERROR)
+                                        .build()
+                        ).setComponents().queue();
+                        return;
+                    }
 
-            if (action.equals("sire_reject")) {
-                event.editMessageEmbeds(
-                        new EmbedBuilder()
-                                .setTitle("Sire Request Rejected")
-                                .setDescription("You have rejected " + sire.getEffectiveName() + "'s request to sire you.")
-                                .setColor(EmbedManager.ERROR)
-                                .build()
-                ).setComponents().queue();
-                return;
-            }
+                    // otherwise its accept (cos its not reject, law of excluded middle, BAM, aristotle would be proud)
 
-            String existingSire = dbRepo.getUserSireId(guildId, targetId);
-            if (existingSire != null) {
-                event.editMessage("You are already sired by someone else.").setComponents().queue();
-                return;
-            }
+                    String existingSire = dbRepo.getUserSireId(guildId, targetId);
+                    if (existingSire != null) {
+                        event.editMessage("You are already sired by someone else.").setComponents().queue();
+                        return;
+                    }
 
-            dbRepo.setUserSireId(guildId, targetId, sireId);
+                    dbRepo.setUserSireId(guildId, targetId, sireId);
 
-            event.editMessageEmbeds(
-                    new EmbedBuilder()
-                            .setTitle("Sire Request Accepted")
-                            .setDescription("You have accepted " + sire.getEffectiveName() + "'s request. You are now part of their lineage!")
-                            .setColor(EmbedManager.SUCCESS)
-                            .build()
-            ).setComponents().queue();
+                    event.editMessageEmbeds(
+                            new EmbedBuilder()
+                                    .setTitle("Sire Request Accepted")
+                                    .setDescription("You have accepted " + sire.getEffectiveName() + "'s request. You are now part of their lineage!")
+                                    .setColor(EmbedManager.SUCCESS)
+                                    .build()
+                    ).setComponents().queue();
 
+                }, error -> {
+                    event.editMessage("The sire has left the server. Request cancelled.").setComponents().queue();
+                });
+            }, error -> {
+                event.editMessage("You have left the server. Request cancelled.").setComponents().queue();
+            });
         }
     }
 
     private void handleVampireLineageCommand(SlashCommandInteractionEvent event) {
-        Guild guild = event.getGuild();
-        Member currentMember = event.getMember();
-        DatabaseRepo.UserLevelHolder level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
-        DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
+        Guild guild = Objects.requireNonNull(event.getGuild());
+        String currentUserId = Objects.requireNonNull(event.getMember()).getId();
 
-        String roleName;
-        StringBuilder lineage;
+        StringBuilder lineage = new StringBuilder();
+        List<String> visited = new ArrayList<>();
 
-        if(roleHolder == null) {
-            lineage = new StringBuilder(currentMember.getAsMention() + " is sired to ");
-        } else {
-            roleName = guild.getRoleById(roleHolder.roleId()).getName();
-            lineage = new StringBuilder(currentMember.getAsMention() + " is a " + roleName + " of ");
-        }
+        boolean first = true;
 
-        while(dbRepo.getUserSireId(guild.getId(), currentMember.getId()) != null) {
-            String id = dbRepo.getUserSireId(guild.getId(), currentMember.getId());
-            currentMember = guild.getMemberById(id);
-            level = dbRepo.getUserLevel(guild.getId(), currentMember.getId());
-            roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
+        while (true) {
 
-            if(roleHolder != null) {
-                roleName = guild.getRoleById(roleHolder.roleId()).getName();
-                lineage.append(currentMember.getAsMention()).append(", who is a ").append(roleName).append(" of ");
-            } else {
-                lineage.append(currentMember.getAsMention()).append(", who is sired to ");
+            if (visited.contains(currentUserId)) {
+                lineage.append("... *(This loops back round)*");
+                break;
+            }
+            visited.add(currentUserId);
+
+            DatabaseRepo.UserLevelHolder level = dbRepo.getUserLevel(guild.getId(), currentUserId);
+            DatabaseRepo.LevelRoleHolder roleHolder = dbRepo.getHighestRoleForLevel(guild.getId(), level.level());
+
+            String roleName = "Titleless";
+            if (roleHolder != null) {
+                Role role = guild.getRoleById(roleHolder.roleId());
+                if (role != null) {
+                    roleName = role.getName();
+                } else {
+                    roleName = "Unknown Title";
+                }
             }
 
-        }
+            String mention = "<@" + currentUserId + ">"; // Can't get it as mention without cache fucking shit up so just do this, fuck it
 
-        lineage.append("nobody.");
+            if (first) {
+                lineage.append(mention).append(" is a ").append(roleName);
+                first = false;
+            } else {
+                lineage.append(mention).append(" (a ").append(roleName).append(")");
+            }
+
+            String sireId = dbRepo.getUserSireId(guild.getId(), currentUserId);
+            if (sireId == null) {
+                break;
+            }
+
+            lineage.append(", who is sired to ");
+
+            currentUserId = sireId;
+        }
 
         event.replyEmbeds(EmbedManager.success("Your Lineage", lineage.toString())).queue();
     }

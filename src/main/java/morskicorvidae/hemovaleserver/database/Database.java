@@ -63,11 +63,12 @@ public class Database {
         """);
 
         // 4. Guild Config Table
-        // Stores the configuration of guilds (for now just the joining role)
+        // Stores data related to the guild and the bot's use in the guild
         statement.execute("""
             CREATE TABLE IF NOT EXISTS guild_config (
                 guild_id TEXT,
                 join_role_id TEXT,
+                podcast_category_id TEXT,
                 PRIMARY KEY (guild_id)
             )
         """);
@@ -93,6 +94,20 @@ public class Database {
                 emoji TEXT,
                 role_id TEXT,
                 PRIMARY KEY (guild_id, message_id, emoji)
+            )
+        """);
+
+        // 7. Vampire Pets Table
+        // this is gonna be fucking sick if it can be done
+        statement.execute("""
+            CREATE TABLE IF NOT EXISTS vampire_pets (
+                guild_id TEXT,
+                user_id TEXT,
+                species TEXT,
+                attack INTEGER DEFAULT 10,
+                defense INTEGER DEFAULT 10,
+                accuracy INTEGER DEFAULT 10,
+                PRIMARY KEY (guild_id, user_id)
             )
         """);
     }
