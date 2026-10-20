@@ -129,6 +129,8 @@ public class Main extends ListenerAdapter {
         reactroleCommand.addOption(OptionType.STRING, "emoji", "The emoji the role will be given from.", true);
         reactroleCommand.addOption(OptionType.ROLE, "role", "The role to be given.", true);
 
+        SubcommandData shutdownCommand = new SubcommandData("shutdown", "Takes the bot offline immediately.");
+
         SlashCommandData podcastCommand = Commands.slash("podcast", "Podcast related commands");
 
         OptionData categoryOption = new OptionData(OptionType.CHANNEL, "category", "The category to create podcasts in.", true)
@@ -143,7 +145,7 @@ public class Main extends ListenerAdapter {
 
         podcastCommand.addSubcommands(categorySubcommand, createSubcommand);
 
-        adminCommand.addSubcommands(nukeCommand, reactroleCommand);
+        adminCommand.addSubcommands(nukeCommand, reactroleCommand, shutdownCommand);
 
         for(Guild guild : event.getJDA().getGuilds()) {
             guild.updateCommands().addCommands(roleCommand, joinroleCommand, profileCommand, vampireCommand, adminCommand, podcastCommand).queue();
@@ -432,7 +434,31 @@ public class Main extends ListenerAdapter {
         switch(event.getSubcommandName()) {
             case "nuke" -> handleAdminNukeCommand(event);
             case "reactrole" -> handleAdminReactroleCommand(event);
+            case "shutdown" -> handleAdminShutdownCommand(event);
         }
+    }
+
+    private void handleAdminShutdownCommand(SlashCommandInteractionEvent event) {
+        String botOwnerDiscordId = System.getenv("BOT_OWNER_DISCORD_ID");
+
+        if(!event.getUser().getId().equals(botOwnerDiscordId)) {
+            event.replyEmbeds(EmbedManager.error("Not Allowed!", "This command is only allowed for owners of the bot, for testing purposes.")).queue();
+            return;
+        }
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Shut Down Bot Dialogue")
+                .setDescription("How would you like to shut down the bot?")
+                .setColor(Color.RED);
+
+        event.replyEmbeds(embed.build())
+                .addComponents(
+                        ActionRow.of(
+                                Button.primary("confirm_shutdown", "Shut Down"),
+                                Button.secondary("cancel_shutdown", "Cancel"),
+                                Button.danger("force_shutdown", "Force Shutdown")
+                        )
+                ).queue();
     }
 
     private void handleAdminReactroleCommand(SlashCommandInteractionEvent event) {
@@ -876,6 +902,34 @@ public class Main extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String[] idParts = event.getComponentId().split(":"); // action:sireId:guildId
         String action = idParts[0];
+
+        if(action.equals("confirm_shutdown") || action.equals("force_shutdown") || action.equals("cancel_shutdown")) {
+            String botOwnerDiscordId = System.getenv("BOT_OWNER_DISCORD_ID");
+
+            if(!event.getMember().getId().equals(botOwnerDiscordId)) {
+                event.reply("You are not the processor of this command!").setEphemeral(true).queue();
+                return;
+            }
+
+            if(action.equals("cancel_shutdown")) {
+                event.editMessageEmbeds(
+                        EmbedManager.neutral("Cancelled", "Shutdown has been cancelled.")
+                ).setComponents().queue();
+                return;
+            }
+
+            new Thread(() -> {
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+
+                if(action.equals("force_shutdown")) {
+                    event.getJDA().shutdownNow();
+                } else {
+                    event.getJDA().shutdown();
+                }
+
+                System.exit(0);
+            }).start();
+        }
 
         if (action.equals("sire_accept") || action.equals("sire_reject")) {
             String sireId = idParts[1];
