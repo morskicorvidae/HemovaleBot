@@ -739,7 +739,6 @@ public class Main extends ListenerAdapter {
          */
     }
 
-
     private void handleVampireSiringCommand(SlashCommandInteractionEvent event) {
         Guild guild = Objects.requireNonNull(event.getGuild());
         Member sire = Objects.requireNonNull(event.getMember());
