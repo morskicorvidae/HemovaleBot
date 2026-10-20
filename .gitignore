@@ -10,6 +10,7 @@ env.properties
 *.db
 *.db-*
 *.svg
+*.png
 
 ### IntelliJ IDEA ###
 .idea
