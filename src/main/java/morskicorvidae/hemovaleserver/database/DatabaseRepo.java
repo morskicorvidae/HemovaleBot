@@ -31,7 +31,6 @@ public class DatabaseRepo {
         }
     }
 
-    // Get the color role id from the level role id
     public String getColorRoleId(String guildId, String roleId) {
         String sql = "SELECT color_role_id FROM level_roles WHERE guild_id = ? AND role_id = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
@@ -246,7 +245,6 @@ public class DatabaseRepo {
             System.err.println("Getting user sire FAILURE " + e.getMessage());
         }
 
-        // If not found, create the user level and return a holder for it.
         return null;
     }
 
@@ -376,17 +374,15 @@ public class DatabaseRepo {
                 "accuracy = excluded.accuracy";
 
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
-            // 1. Insert values
             statement.setString(1, pet.getGuildId());
             statement.setString(2, pet.getUserId());
-            statement.setString(3, pet.getSpecies().name().toLowerCase()); // Matches your getUserPet logic
+            statement.setString(3, pet.getSpecies().name().toLowerCase());
             statement.setInt(4, pet.getLevel());
             statement.setInt(5, pet.getHealth());
             statement.setInt(6, pet.getAttack());
             statement.setInt(7, pet.getDefense());
             statement.setInt(8, pet.getAccuracy());
 
-            // 2. Execute
             statement.executeUpdate();
             return true;
 
@@ -439,7 +435,6 @@ public class DatabaseRepo {
         return siredUsers;
     }
 
-    // Removes the leaving user as a sire from all their children
     public void clearChildrenOfSire(String guildId, String sireId) {
         String sql = "UPDATE vampire_family SET sire_id = NULL WHERE guild_id = ? AND sire_id = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {

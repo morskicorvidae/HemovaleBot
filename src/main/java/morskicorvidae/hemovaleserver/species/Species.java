@@ -11,7 +11,8 @@ import java.util.stream.Collectors;
 public enum Species {
     POOCHYENA("Poochyena", "poochyena"),
     MURKROW("Murkrow", "murkrow"),
-    UMBREON("Umbreon", "umbreon");
+    UMBREON("Umbreon", "umbreon"),
+    MISDREAVUS("Misdreavus", "misdreavus");
 
     public static final List<Species> COLLECTION;
 
