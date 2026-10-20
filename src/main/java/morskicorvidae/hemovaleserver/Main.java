@@ -247,7 +247,7 @@ public class Main extends ListenerAdapter {
 
             System.out.println("Calculated " + level + " with " + totalXp + " xp!");
 
-            handleLevelUp(event, guild, event.getMember(), level, totalXp);
+            handleLevelUp(event, guild, user, level, totalXp, false);
 
             System.out.println("handleLevelUp should've been run");
         }
@@ -257,28 +257,33 @@ public class Main extends ListenerAdapter {
         System.out.println("Updated user level in database.");
     }
 
-    public void handleLevelUp(MessageReceivedEvent event, Guild guild, Member member, int newLevel, int newXp) {
+    public void handleLevelUp(MessageReceivedEvent event, Guild guild, User user, int newLevel, int newXp, boolean recursive) {
         System.out.println("handle level up IS being run actually");
-        event.getMessage().reply(member.getAsMention() + " has ascended to **Level " + newLevel + "**!").queue();
+        event.getMessage().reply((recursive ? user.getEffectiveName() : user.getAsMention()) + " has ascended to **Level " + newLevel + "**!").queue();
 
         List<DatabaseRepo.LevelRoleHolder> allRoles = dbRepo.getAllLevelRoles(guild.getId());
 
-        Role roleToGive = null;
-        for (DatabaseRepo.LevelRoleHolder holder : allRoles) {
-            if (newLevel >= holder.levelRequirement()) {
-                Role role = guild.getRoleById(holder.roleId());
 
-                if (role != null && !member.getRoles().contains(role)) {
-                    roleToGive = role;
+        Member tryMember = guild.getMemberById(user.getId());
+
+        if(tryMember != null) {
+            Role roleToGive = null;
+            for (DatabaseRepo.LevelRoleHolder holder : allRoles) {
+                if (newLevel >= holder.levelRequirement()) {
+                    Role role = guild.getRoleById(holder.roleId());
+
+                    if (role != null && !tryMember.getRoles().contains(role)) {
+                        roleToGive = role;
+                    }
                 }
+            }
+
+            if (roleToGive != null) {
+                guild.addRoleToMember(tryMember, roleToGive).queue();
             }
         }
 
-        if (roleToGive != null) {
-            guild.addRoleToMember(member, roleToGive).queue();
-        }
-
-        String sireId = dbRepo.getUserSireId(guild.getId(), member.getId());
+        String sireId = dbRepo.getUserSireId(guild.getId(), user.getId());
 
         if(sireId != null) {
             int xpToGive = newLevel * 15;
@@ -294,7 +299,13 @@ public class Main extends ListenerAdapter {
                 level += 1;
                 totalXp = remainder;
 
-                handleLevelUp(event, guild, guild.getMemberById(sireId), level, totalXp);
+                int finalLevel = level;
+                int finalTotalXp = totalXp;
+
+                event.getJDA().retrieveUserById(sireId).queue(id -> {
+                    handleLevelUp(event, guild, id, finalLevel, finalTotalXp, true);
+                });
+
             }
 
             dbRepo.updateUserLevel(guild.getId(), sireId, totalXp, level);
@@ -600,7 +611,7 @@ public class Main extends ListenerAdapter {
         String group = event.getSubcommandGroup();
         String name  = event.getSubcommandName();
 
-        if (group.equals("pet")) {
+        if (Objects.equals(group, "pet")) {
             switch (name) {
                 case "adopt" -> handleVampirePetAdoptCommand(event);
                 case "info" -> handleVampirePetInfoCommand(event);
