@@ -12,7 +12,8 @@ public enum Species {
     POOCHYENA("Poochyena", "poochyena"),
     MURKROW("Murkrow", "murkrow"),
     UMBREON("Umbreon", "umbreon"),
-    MISDREAVUS("Misdreavus", "misdreavus");
+    MISDREAVUS("Misdreavus", "misdreavus"),
+    UNOWN("Unown", "unown");
 
     public static final List<Species> COLLECTION;
 
