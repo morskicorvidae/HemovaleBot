@@ -18,7 +18,7 @@ public enum Species {
     public static final List<Species> COLLECTION;
 
     static {
-        COLLECTION = Arrays.stream(Species.values()).collect(Collectors.toList());
+        COLLECTION = List.of(Species.values());
     }
 
     private final String name;
@@ -35,7 +35,7 @@ public enum Species {
     }
 
     private String loadSprite(String suffix) {
-        try (InputStream is = ProfileImageGenerator.class.getResourceAsStream("/" + this.internalName + suffix)) {
+        try (InputStream is = Species.class.getResourceAsStream("/" + this.internalName + suffix)) {
             if (is == null) {
                 System.err.println("Fetching sprite from resources (" + this.name + suffix + ") FAILURE");
                 return "";
