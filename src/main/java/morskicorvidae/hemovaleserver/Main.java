@@ -103,14 +103,17 @@ public class Main extends ListenerAdapter {
         OptionData speciesOption = new OptionData(OptionType.STRING, "species", "The species you wish to adopt.")
                 .setAutoComplete(true).setRequired(true);
 
+        adoptSubcommand.addOptions(speciesOption);
+
         SubcommandData abandonSubcommand = new SubcommandData("abandon", "Abandons your current pet.");
         SubcommandData infoSubcommand = new SubcommandData("info", "Shows information about your current pet.");
 
-        adoptSubcommand.addOptions(speciesOption);
+        SubcommandData battleSubcommand = new SubcommandData("battle", "Allows you to battle another player with a pet.");
+        battleSubcommand.addOption(OptionType.USER, "user", "The user you wish to battle.", true);
 
         SubcommandGroupData petGroup = new SubcommandGroupData("pet", "Vampire pet related commands");
 
-        petGroup.addSubcommands(adoptSubcommand, abandonSubcommand, infoSubcommand);
+        petGroup.addSubcommands(adoptSubcommand, abandonSubcommand, infoSubcommand, battleSubcommand);
 
         vampireCommand.addSubcommandGroups(petGroup);
 
@@ -616,6 +619,7 @@ public class Main extends ListenerAdapter {
                 case "adopt" -> handleVampirePetAdoptCommand(event);
                 case "info" -> handleVampirePetInfoCommand(event);
                 case "abandon" -> handleVampirePetAbandonCommand(event);
+                case "battle" -> handleVampirePetBattleCommand(event);
             }
             return;
         }
@@ -627,6 +631,50 @@ public class Main extends ListenerAdapter {
             case "siring"  -> handleVampireSiringCommand(event);
             default -> event.reply("Unknown subcommand.").setEphemeral(true).queue();
         }
+    }
+
+    private void handleVampirePetBattleCommand(SlashCommandInteractionEvent event) {
+        Guild guild = event.getGuild();
+        Member member = event.getMember();
+        Member other = event.getOption("user").getAsMember();
+
+        Pet memberPet = dbRepo.getUserPet(guild.getId(), member.getId());
+        Pet otherPet = dbRepo.getUserPet(guild.getId(), other.getId());
+
+        if(memberPet == null) {
+            event.replyEmbeds(EmbedManager.error("You Have No Pet!", "You do not have a pet to battle with. Adopt one with /vampire pet adopt [species]")).queue();
+            return;
+        }
+
+        if(otherPet == null) {
+            event.replyEmbeds(EmbedManager.error(other.getAsMention() + " Has No Pet!", "The user you are trying to battle does not have a pet, so you cannot battle them.")).queue();
+            return;
+        }
+
+        event.deferReply().queue();
+
+        // 3. CREATE THREAD SO THAT BOT DOES NOT FREEZE CREATING IMAGE
+
+        new Thread(() -> {
+            try {
+                byte[] imageBytes = BattleImageGenerator.generateBattleImage(
+                        memberPet,
+                        memberPet.getHealth(),
+                        otherPet,
+                        otherPet.getHealth()
+                );
+
+                // 4. SEND THE ACTUAL IMAGE
+                event.getHook().sendFiles(
+                        net.dv8tion.jda.api.utils.FileUpload.fromData(imageBytes, "battle.png")
+                ).queue();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                event.getHook().sendMessageEmbeds(EmbedManager.error("Error", "Failed to generate the battle image.")).queue();
+            }
+        }).start();
+
     }
 
     private void handleVampirePetAbandonCommand(SlashCommandInteractionEvent event) {
@@ -685,6 +733,7 @@ public class Main extends ListenerAdapter {
         try {
             Species species = Species.valueOf(speciesOption);
             int level = 5;
+            int health = ThreadLocalRandom.current().nextInt(1, 5);
             int attack = ThreadLocalRandom.current().nextInt(1, 5);
             int defense = ThreadLocalRandom.current().nextInt(1, 5);
             int accuracy = ThreadLocalRandom.current().nextInt(1, 5);
@@ -694,6 +743,7 @@ public class Main extends ListenerAdapter {
                     .setUserId(userId)
                     .setSpecies(species)
                     .setLevel(level)
+                    .setHealth(health)
                     .setAttack(attack)
                     .setDefense(defense)
                     .setAccuracy(accuracy);
@@ -704,6 +754,7 @@ public class Main extends ListenerAdapter {
                     .setTitle("Your " + species.getName() + "!")
                     .setColor(EmbedManager.SUCCESS)
                     .setDescription("*Adopted at Level " + level + "*")
+                    .addField("Health", String.valueOf(health), true)
                     .addField("Attack", String.valueOf(attack), true)
                     .addField("Defense", String.valueOf(defense), true)
                     .addField("Accuracy", String.valueOf(accuracy), true);
@@ -713,30 +764,6 @@ public class Main extends ListenerAdapter {
         } catch (IllegalArgumentException e) {
             event.replyEmbeds(EmbedManager.error("Invalid Species", "I do not know what a `" + speciesOption + "` is.")).setEphemeral(true).queue();
         }
-
-        /*
-        event.deferReply().queue();
-
-        // 3. CREATE THREAD SO THAT BOT DOES NOT FREEZE CREATING IMAGE
-
-        new Thread(() -> {
-            try {
-                byte[] imageBytes = BattleImageGenerator.generateBattleImage(
-                        Species.POOCHYENA,
-                        Species.POOCHYENA
-                );
-
-                // 4. SEND THE ACTUAL IMAGE
-                event.getHook().sendFiles(
-                        net.dv8tion.jda.api.utils.FileUpload.fromData(imageBytes, "battle.png")
-                ).queue();
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                event.getHook().sendMessageEmbeds(EmbedManager.error("Error", "Failed to generate the battle image.")).queue();
-            }
-        }).start();
-         */
     }
 
     private void handleVampireSiringCommand(SlashCommandInteractionEvent event) {

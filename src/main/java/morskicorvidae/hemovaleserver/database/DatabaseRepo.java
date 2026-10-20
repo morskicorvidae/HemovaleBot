@@ -332,7 +332,7 @@ public class DatabaseRepo {
     }
 
     public Pet getUserPet(String guildId, String userId) {
-        String sql = "SELECT species, level, attack, defense, accuracy FROM vampire_pets WHERE guild_id = ? AND user_id = ?";
+        String sql = "SELECT species, level, health, attack, defense, accuracy FROM vampire_pets WHERE guild_id = ? AND user_id = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, guildId);
             statement.setString(2, userId);
@@ -340,6 +340,7 @@ public class DatabaseRepo {
                 if (resultSet.next()) {
                     String speciesStr = resultSet.getString("species");
                     int level = resultSet.getInt("level");
+                    int health = resultSet.getInt("health");
                     int attack = resultSet.getInt("attack");
                     int defense = resultSet.getInt("defense");
                     int accuracy = resultSet.getInt("accuracy");
@@ -351,6 +352,7 @@ public class DatabaseRepo {
                             .setUserId(userId)
                             .setSpecies(species)
                             .setLevel(level)
+                            .setHealth(health)
                             .setAttack(attack)
                             .setDefense(defense)
                             .setAccuracy(accuracy);
@@ -363,11 +365,12 @@ public class DatabaseRepo {
     }
 
     public boolean saveUserPet(Pet pet) {
-        String sql = "INSERT INTO vampire_pets (guild_id, user_id, species, level, attack, defense, accuracy) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO vampire_pets (guild_id, user_id, species, level, health, attack, defense, accuracy) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT(guild_id, user_id) DO UPDATE SET " +
                 "species = excluded.species, " +
                 "level = excluded.level, " +
+                "health = excluded.health, " +
                 "attack = excluded.attack, " +
                 "defense = excluded.defense, " +
                 "accuracy = excluded.accuracy";
@@ -378,9 +381,10 @@ public class DatabaseRepo {
             statement.setString(2, pet.getUserId());
             statement.setString(3, pet.getSpecies().name().toLowerCase()); // Matches your getUserPet logic
             statement.setInt(4, pet.getLevel());
-            statement.setInt(5, pet.getAttack());
-            statement.setInt(6, pet.getDefense());
-            statement.setInt(7, pet.getAccuracy());
+            statement.setInt(5, pet.getHealth());
+            statement.setInt(6, pet.getAttack());
+            statement.setInt(7, pet.getDefense());
+            statement.setInt(8, pet.getAccuracy());
 
             // 2. Execute
             statement.executeUpdate();

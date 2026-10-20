@@ -105,9 +105,10 @@ public class Database {
                 user_id TEXT,
                 species TEXT,
                 level INTEGER DEFAULT 5,
-                attack INTEGER DEFAULT 10,
-                defense INTEGER DEFAULT 10,
-                accuracy INTEGER DEFAULT 10,
+                health INTEGER DEFAULT 1,
+                attack INTEGER DEFAULT 1,
+                defense INTEGER DEFAULT 1,
+                accuracy INTEGER DEFAULT 1,
                 PRIMARY KEY (guild_id, user_id)
             )
         """);

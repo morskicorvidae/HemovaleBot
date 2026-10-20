@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 
 public class BattleImageGenerator {
 
-    public static byte[] generateBattleImage(Pet backPet, Pet frontPet) throws Exception {
+    public static byte[] generateBattleImage(Pet backPet, int backCurrentHp, Pet frontPet, int frontCurrentHp) throws Exception {
         // 1. GET SVG TEMPLATE FROM RESOURCES
         String svgTemplate;
 
@@ -35,7 +35,9 @@ public class BattleImageGenerator {
                 .replace("{{BACK_HP_WIDTH}}", "30")
                 .replace("{{FRONT_HP_WIDTH}}", "30")
                 .replace("{{FRONT_LEVEL}}", String.valueOf(frontPet.getLevel()))
-                .replace("{{BACK_LEVEL}}", String.valueOf(backPet.getLevel()));
+                .replace("{{BACK_LEVEL}}", String.valueOf(backPet.getLevel()))
+                .replace("{{BACK_HP_TEXT}}", backCurrentHp + " / " + backPet.getHealth())
+                .replace("{{FRONT_HP_TEXT}}", frontCurrentHp + " / " + frontPet.getHealth());
 
         PixelArtPNGTranscoder transcoder = new PixelArtPNGTranscoder();
 
