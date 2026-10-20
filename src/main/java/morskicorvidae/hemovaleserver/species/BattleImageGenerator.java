@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 
 public class BattleImageGenerator {
 
-    public static byte[] generateBattleImage(Species backSpecies, Species frontSpecies) throws Exception {
+    public static byte[] generateBattleImage(Pet backPet, Pet frontPet) throws Exception {
         // 1. GET SVG TEMPLATE FROM RESOURCES
         String svgTemplate;
 
@@ -24,18 +24,18 @@ public class BattleImageGenerator {
             svgTemplate = new String(is.readAllBytes(), StandardCharsets.UTF_8);
         }
 
-        String back64 = backSpecies.getBacksprite64();
-        String front64 = frontSpecies.getFrontsprite64();
+        String back64 = backPet.getSpecies().getBacksprite64();
+        String front64 = frontPet.getSpecies().getFrontsprite64();
 
         String filledSvg = svgTemplate
                 .replace("{{BATTLER_BACK}}", back64)
                 .replace("{{BATTLER_FRONT}}", front64)
-                .replace("{{BACK_NAME}}", backSpecies.getName())
-                .replace("{{FRONT_NAME}}", frontSpecies.getName())
+                .replace("{{BACK_NAME}}", backPet.getSpecies().getName())
+                .replace("{{FRONT_NAME}}", frontPet.getSpecies().getName())
                 .replace("{{BACK_HP_WIDTH}}", "30")
                 .replace("{{FRONT_HP_WIDTH}}", "30")
-                .replace("{{FRONT_LEVEL}}", "5")
-                .replace("{{BACK_LEVEL}}", "5");
+                .replace("{{FRONT_LEVEL}}", String.valueOf(frontPet.getLevel()))
+                .replace("{{BACK_LEVEL}}", String.valueOf(backPet.getLevel()));
 
         PixelArtPNGTranscoder transcoder = new PixelArtPNGTranscoder();
 

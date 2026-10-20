@@ -1,5 +1,8 @@
 package morskicorvidae.hemovaleserver.database;
 
+import morskicorvidae.hemovaleserver.species.Pet;
+import morskicorvidae.hemovaleserver.species.Species;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -326,6 +329,81 @@ public class DatabaseRepo {
             System.err.println("Getting podcast category FAILURE " + e.getMessage());
         }
         return null;
+    }
+
+    public Pet getUserPet(String guildId, String userId) {
+        String sql = "SELECT species, level, attack, defense, accuracy FROM vampire_pets WHERE guild_id = ? AND user_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, userId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    String speciesStr = resultSet.getString("species");
+                    int level = resultSet.getInt("level");
+                    int attack = resultSet.getInt("attack");
+                    int defense = resultSet.getInt("defense");
+                    int accuracy = resultSet.getInt("accuracy");
+
+                    Species species = Species.valueOf(speciesStr.toUpperCase());
+
+                    return new Pet()
+                            .setGuildId(guildId)
+                            .setUserId(userId)
+                            .setSpecies(species)
+                            .setLevel(level)
+                            .setAttack(attack)
+                            .setDefense(defense)
+                            .setAccuracy(accuracy);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Getting user pet FAILURE " + e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean saveUserPet(Pet pet) {
+        String sql = "INSERT INTO vampire_pets (guild_id, user_id, species, level, attack, defense, accuracy) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT(guild_id, user_id) DO UPDATE SET " +
+                "species = excluded.species, " +
+                "level = excluded.level, " +
+                "attack = excluded.attack, " +
+                "defense = excluded.defense, " +
+                "accuracy = excluded.accuracy";
+
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            // 1. Insert values
+            statement.setString(1, pet.getGuildId());
+            statement.setString(2, pet.getUserId());
+            statement.setString(3, pet.getSpecies().name().toLowerCase()); // Matches your getUserPet logic
+            statement.setInt(4, pet.getLevel());
+            statement.setInt(5, pet.getAttack());
+            statement.setInt(6, pet.getDefense());
+            statement.setInt(7, pet.getAccuracy());
+
+            // 2. Execute
+            statement.executeUpdate();
+            return true;
+
+        } catch (SQLException e) {
+            System.err.println("Saving user pet FAILURE " + e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean abandonPet(String guildId, String userId) {
+        String sql = "DELETE FROM vampire_pets WHERE guild_id = ? AND user_id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, guildId);
+            statement.setString(2, userId);
+
+            int rowsAffected = statement.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.err.println("Abandoning user pet FAILURE " + e.getMessage());
+            return false;
+        }
     }
 
     public void deleteReactionRole(String guildId, String messageId, String emoji) {
