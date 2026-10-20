@@ -17,6 +17,7 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.45.3.0")
     implementation("org.apache.xmlgraphics:batik-transcoder:1.17")
     implementation("org.apache.xmlgraphics:batik-codec:1.17")
+    implementation("org.apache.commons:commons-text:1.15.0")
 }
 
 tasks.test {

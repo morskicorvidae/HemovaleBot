@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import org.apache.commons.text.StringEscapeUtils;
 
 public class ProfileImageGenerator {
 
@@ -38,7 +39,7 @@ public class ProfileImageGenerator {
         // 4. JUST ASSIGN THE VALUES TO THE PLACEHOLDERS
 
         String filledSvg = svgTemplate
-                .replace("{{USERNAME}}", username)
+                .replace("{{USERNAME}}", StringEscapeUtils.escapeXml10(username))
                 .replace("{{AVATAR}}", base64Avatar)
                 .replace("{{LEVEL}}", String.valueOf(level))
                 .replace("{{XP_TEXT}}", currentXp + " / " + requiredXp + " XP")
